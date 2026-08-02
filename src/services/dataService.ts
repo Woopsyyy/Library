@@ -79,10 +79,77 @@ export function logActivity(action: string, details?: string, userName: string =
   setLocal(STORAGE_KEYS.LOGS, logs.slice(0, 100));
 
   if (isSupabaseConfigured && supabase) {
-    supabase.from('activity_logs').insert([newLog]).then(({ error }) => {
+    const logForDb = {
+      action,
+      details,
+      user_name: userName,
+      created_at: new Date().toISOString(),
+    };
+    supabase.from('activity_logs').insert([logForDb]).then(({ error }) => {
       if (error) console.warn('Supabase activity log error:', error.message);
     });
   }
+}
+
+// Hash a password with SHA-256 (Web Crypto). Falls back to plaintext on insecure contexts.
+async function hashPassword(password: string): Promise<string> {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const data = new TextEncoder().encode(password);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  return password;
+}
+
+// Generate a random temporary password (no ambiguous chars like 0/O, 1/l/I).
+function generateTemporaryPassword(length = 8): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const values = new Uint32Array(length);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(values);
+  } else {
+    for (let i = 0; i < length; i++) values[i] = Math.floor(Math.random() * 0xffffffff);
+  }
+  return Array.from(values, v => chars[v % chars.length]).join('');
+}
+
+const BOOK_COVER_BUCKET = 'book-covers';
+const MAX_COVER_SIZE = 5 * 1024 * 1024;
+
+// Upload a book cover to Supabase Storage and return its public URL.
+async function uploadBookCover(file: File): Promise<string> {
+  if (!supabase) throw new Error('Supabase storage is not configured.');
+  if (!file.type.startsWith('image/')) throw new Error('Please choose an image file (PNG, JPG, WebP).');
+  if (file.size > MAX_COVER_SIZE) throw new Error('Image must be 5MB or smaller.');
+
+  const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'cover';
+  const path = `${Date.now()}-${cleanName}`;
+  const { error } = await supabase.storage.from(BOOK_COVER_BUCKET).upload(path, file, {
+    contentType: file.type || 'application/octet-stream',
+    upsert: true,
+  });
+  if (error) throw new Error(`Image upload failed: ${error.message}`);
+
+  const { data } = supabase.storage.from(BOOK_COVER_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// Read an image file as a data URL (local-storage fallback).
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Resolve a cover file to a stored URL (Supabase upload or local data URL).
+async function resolveCoverUrl(file: File): Promise<string> {
+  if (isSupabaseConfigured && supabase) {
+    return await uploadBookCover(file);
+  }
+  return await fileToDataUrl(file);
 }
 
 // SERVICE IMPLEMENTATION
@@ -226,7 +293,7 @@ export const dataService = {
     });
   },
 
-  async addBook(data: { title: string; type_id: string; series_id: string; total_copies: number }): Promise<Book> {
+  async addBook(data: { title: string; type_id: string; series_id: string; total_copies: number; cover_file?: File | null }): Promise<Book> {
     if (!data.title.trim()) throw new Error('Book title is required.');
     if (data.total_copies < 1) throw new Error('Total copies must be at least 1.');
 
@@ -241,6 +308,8 @@ export const dataService = {
     const typeObj = types.find(t => t.id === data.type_id);
     const seriesObj = series.find(s => s.id === data.series_id);
 
+    const cover_url = data.cover_file ? await resolveCoverUrl(data.cover_file) : undefined;
+
     const newBookObj = {
       title: data.title.trim(),
       type_id: data.type_id,
@@ -248,6 +317,7 @@ export const dataService = {
       total_copies: total,
       available_copies: total,
       status: 'Available' as const,
+      ...(cover_url ? { cover_url } : {}),
     };
 
     if (isSupabaseConfigured && supabase) {
@@ -277,7 +347,7 @@ export const dataService = {
     return newBook;
   },
 
-  async updateBook(id: string, updates: Partial<Book>): Promise<Book> {
+  async updateBook(id: string, updates: Partial<Book> & { cover_file?: File | null }): Promise<Book> {
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
       throw new Error(conn.message || 'Database not connected.');
@@ -289,9 +359,15 @@ export const dataService = {
     const totalCopies = updates.total_copies !== undefined ? Number(updates.total_copies) : (books[index]?.total_copies || 1);
     const availCopies = updates.available_copies !== undefined ? Number(updates.available_copies) : (books[index]?.available_copies || 1);
 
+    const bookUpdates: Partial<Book> = { ...updates };
+    delete (bookUpdates as Partial<Book> & { cover_file?: File | null }).cover_file;
+    if (updates.cover_file) {
+      bookUpdates.cover_url = await resolveCoverUrl(updates.cover_file);
+    }
+
     const updatedBook: Book = {
       ...books[index],
-      ...updates,
+      ...bookUpdates,
       total_copies: totalCopies,
       available_copies: availCopies,
     };
@@ -310,6 +386,7 @@ export const dataService = {
         total_copies: updatedBook.total_copies,
         available_copies: updatedBook.available_copies,
         status: updatedBook.status,
+        ...(updatedBook.cover_url ? { cover_url: updatedBook.cover_url } : {}),
       }).eq('id', id);
       if (error) throw new Error(error.message);
     }
@@ -406,7 +483,18 @@ export const dataService = {
     };
 
     if (isSupabaseConfigured && supabase) {
-      const { data: inserted, error } = await supabase.from('borrow_requests').insert([newReq]).select().single();
+      const reqForDb = {
+        student_name: newReq.student_name,
+        student_id: newReq.student_id,
+        course: newReq.course,
+        year_level: newReq.year_level,
+        section: newReq.section,
+        book_id: newReq.book_id,
+        duration_days: newReq.duration_days,
+        request_date: newReq.request_date,
+        status: newReq.status,
+      };
+      const { data: inserted, error } = await supabase.from('borrow_requests').insert([reqForDb]).select().single();
       if (error) throw new Error(`Supabase Error: ${error.message}`);
       logActivity('Borrow Request Submitted', `Student ${data.student_name} requested "${targetBook.title}"`);
       return inserted;
@@ -454,7 +542,17 @@ export const dataService = {
       const { error: reqErr } = await supabase.from('borrow_requests').update({ status: 'Approved' }).eq('id', requestId);
       if (reqErr) throw new Error(reqErr.message);
 
-      await supabase.from('borrow_records').insert([newRecord]);
+      const { error: recErr } = await supabase.from('borrow_records').insert([{
+        request_id: newRecord.request_id,
+        student_name: newRecord.student_name,
+        student_id: newRecord.student_id,
+        book_id: newRecord.book_id,
+        borrow_date: newRecord.borrow_date,
+        due_date: newRecord.due_date,
+        status: newRecord.status,
+      }]);
+      if (recErr) throw new Error(recErr.message);
+
       if (targetBook) {
         await supabase.from('books').update({ 
           available_copies: newAvailableCopies, 
@@ -553,7 +651,16 @@ export const dataService = {
       const { error: recErr } = await supabase.from('borrow_records').update({ status: 'Returned' }).eq('id', recordId);
       if (recErr) throw new Error(recErr.message);
 
-      await supabase.from('returns').insert([newReturn]);
+      const { error: retErr } = await supabase.from('returns').insert([{
+        record_id: newReturn.record_id,
+        student_name: newReturn.student_name,
+        book_title: newReturn.book_title,
+        borrow_date: newReturn.borrow_date,
+        return_date: newReturn.return_date,
+        status: newReturn.status,
+      }]);
+      if (retErr) throw new Error(retErr.message);
+
       if (targetBook) {
         await supabase.from('books').update({ 
           available_copies: newAvail, 
@@ -588,10 +695,13 @@ export const dataService = {
     return getLocal<AdminUser[]>(STORAGE_KEYS.USERS, []);
   },
 
-  async addAdminUser(data: { username: string; full_name: string; role: 'Admin' | 'Librarian' }): Promise<AdminUser> {
+  async addAdminUser(data: { username: string; full_name: string; role: 'Admin' | 'Librarian'; password: string }): Promise<AdminUser> {
     const cleanUser = data.username.trim();
     const cleanName = data.full_name.trim();
     if (!cleanUser || !cleanName) throw new Error('Username and Full Name are required.');
+    if (!data.password || data.password.length < 6) {
+      throw new Error('Password must be at least 6 characters.');
+    }
 
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
@@ -605,10 +715,20 @@ export const dataService = {
       role: data.role,
       status: 'Active',
       created_at: new Date().toISOString(),
+      password: await hashPassword(data.password),
+      plain_password: data.password,
     };
 
     if (isSupabaseConfigured && supabase) {
-      const { data: inserted, error } = await supabase.from('admin_users').insert([newUser]).select().single();
+      const { data: inserted, error } = await supabase.from('admin_users').insert([{
+        username: newUser.username,
+        full_name: newUser.full_name,
+        role: newUser.role,
+        status: newUser.status,
+        created_at: newUser.created_at,
+        password: newUser.password,
+        plain_password: newUser.plain_password,
+      }]).select().single();
       if (error) throw new Error(error.message);
       logActivity('Admin created', `Created admin user "${cleanUser}" (${cleanName})`);
       return inserted;
@@ -668,8 +788,34 @@ export const dataService = {
     logActivity('Admin updated', `${newStatus === 'Disabled' ? 'Disabled' : 'Enabled'} user "${target.username}"`);
   },
 
-  async resetAdminPassword(username: string): Promise<void> {
-    logActivity('Password reset', `Reset password for user "${username}"`);
+  async resetAdminPassword(username: string): Promise<string> {
+    const cleanUser = username.trim();
+    if (!cleanUser) throw new Error('Username is required.');
+
+    const newPassword = generateTemporaryPassword();
+    const passwordHash = await hashPassword(newPassword);
+
+    if (isSupabaseConfigured && supabase) {
+      const conn = await validateDatabaseConnection();
+      if (!conn.connected) {
+        throw new Error(conn.message || 'Database not connected.');
+      }
+      const { error } = await supabase
+        .from('admin_users')
+        .update({ password: passwordHash, plain_password: newPassword })
+        .eq('username', cleanUser);
+      if (error) throw new Error(error.message);
+    } else {
+      const users = getLocal<AdminUser[]>(STORAGE_KEYS.USERS, []);
+      const index = users.findIndex(u => u.username.toLowerCase() === cleanUser.toLowerCase());
+      if (index !== -1) {
+        users[index] = { ...users[index], password: passwordHash, plain_password: newPassword };
+        setLocal(STORAGE_KEYS.USERS, users);
+      }
+    }
+
+    logActivity('Password reset', `Reset password for user "${cleanUser}"`);
+    return newPassword;
   },
 
   async deleteAdminUser(id: string): Promise<void> {
@@ -762,10 +908,13 @@ export const dataService = {
     // Check database users
     const users = await this.getAdminUsers();
     const found = users.find(u => u.username.toLowerCase() === cleanUser.toLowerCase());
-    if (found && found.status === 'Active' && password.length >= 6) {
-      setLocal(STORAGE_KEYS.AUTH, found);
-      logActivity('Login successful', `Admin ${found.username} logged in`, found.username);
-      return found;
+    if (found && found.status === 'Active') {
+      const inputHash = await hashPassword(password);
+      if (found.password && found.password === inputHash) {
+        setLocal(STORAGE_KEYS.AUTH, found);
+        logActivity('Login successful', `Admin ${found.username} logged in`, found.username);
+        return found;
+      }
     }
 
     throw new Error('Invalid username or password.');

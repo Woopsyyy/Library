@@ -253,8 +253,16 @@ export const BorrowPage: React.FC = () => {
 
             {selectedBook ? (
               <div className="space-y-4 pt-2">
-                <div className="w-full h-32 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-200">
-                  <BookOpen className="w-10 h-10 text-emerald-600" />
+                <div className="w-full h-32 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200">
+                  {selectedBook.cover_url ? (
+                    <img
+                      src={selectedBook.cover_url}
+                      alt={`Cover of ${selectedBook.title}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <BookOpen className="w-10 h-10 text-emerald-600" />
+                  )}
                 </div>
 
                 <div className="space-y-2">

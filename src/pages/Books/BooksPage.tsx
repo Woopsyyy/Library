@@ -1,10 +1,91 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
 import { Book, BookStatus } from '../../types';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Search, BookOpen, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, BookOpen, X, UploadCloud } from 'lucide-react';
+
+const BookCoverDropzone: React.FC<{
+  preview: string;
+  onSelect: (file: File, preview: string) => void;
+  onClear: () => void;
+}> = ({ preview, onSelect, onClear }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleFiles = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file (PNG, JPG, WebP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be 5MB or smaller.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => onSelect(file, String(reader.result));
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div
+      onClick={() => inputRef.current?.click()}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        handleFiles(e.dataTransfer.files);
+      }}
+      className={`cursor-pointer rounded-xl border-2 border-dashed transition-all ${
+        dragOver
+          ? 'border-emerald-500 bg-emerald-50'
+          : 'border-slate-300 bg-slate-50 hover:border-emerald-400 hover:bg-emerald-50/50'
+      }`}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          handleFiles(e.target.files);
+          e.target.value = '';
+        }}
+      />
+      {preview ? (
+        <div className="relative">
+          <img src={preview} alt="Book cover preview" className="w-full h-40 object-contain p-2" />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClear();
+            }}
+            className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/90 border border-slate-200 text-slate-500 hover:text-rose-600 shadow-xs"
+            title="Remove image"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <UploadCloud className="w-5 h-5" />
+          </div>
+          <p className="text-xs font-bold text-slate-700">Drag &amp; drop book cover here</p>
+          <p className="text-[11px] text-slate-500 font-medium">or click to browse · PNG, JPG, WebP (max 5MB)</p>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const BooksPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -23,6 +104,8 @@ export const BooksPage: React.FC = () => {
   const [totalCopies, setTotalCopies] = useState<number>(1);
   const [availableCopies, setAvailableCopies] = useState<number>(1);
   const [status, setStatus] = useState<BookStatus>('Available');
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState('');
 
   // Queries
   const { data: books = [], isLoading } = useQuery({
@@ -53,6 +136,8 @@ export const BooksPage: React.FC = () => {
     if (bookTypes.length > 0) setTypeId(bookTypes[0].id);
     if (bookSeries.length > 0) setSeriesId(bookSeries[0].id);
     setTotalCopies(1);
+    setCoverFile(null);
+    setCoverPreview('');
     setIsAddOpen(true);
   };
 
@@ -64,16 +149,20 @@ export const BooksPage: React.FC = () => {
     setTotalCopies(book.total_copies);
     setAvailableCopies(book.available_copies);
     setStatus(book.status);
+    setCoverFile(null);
+    setCoverPreview(book.cover_url || '');
   };
 
   const addMutation = useMutation({
-    mutationFn: (data: { title: string; type_id: string; series_id: string; total_copies: number }) =>
+    mutationFn: (data: { title: string; type_id: string; series_id: string; total_copies: number; cover_file?: File | null }) =>
       dataService.addBook(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       toast.success('Book added.');
       setIsAddOpen(false);
+      setCoverFile(null);
+      setCoverPreview('');
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to add book.');
@@ -81,13 +170,15 @@ export const BooksPage: React.FC = () => {
   });
 
   const editMutation = useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<Book> }) =>
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<Book> & { cover_file?: File | null } }) =>
       dataService.updateBook(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       toast.success('Book updated.');
       setEditingBook(null);
+      setCoverFile(null);
+      setCoverPreview('');
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to update book.');
@@ -118,6 +209,7 @@ export const BooksPage: React.FC = () => {
       type_id: typeId || (bookTypes[0]?.id || ''),
       series_id: seriesId || (bookSeries[0]?.id || ''),
       total_copies: Number(totalCopies),
+      cover_file: coverFile,
     });
   };
 
@@ -133,6 +225,7 @@ export const BooksPage: React.FC = () => {
         total_copies: Number(totalCopies),
         available_copies: Number(availableCopies),
         status,
+        cover_file: coverFile,
       },
     });
   };
@@ -207,9 +300,17 @@ export const BooksPage: React.FC = () => {
                 filteredBooks.map((book) => (
                   <tr key={book.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3">
-                      <div className="w-9 h-11 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-emerald-600">
-                        <BookOpen className="w-5 h-5" />
-                      </div>
+                      {book.cover_url ? (
+                        <img
+                          src={book.cover_url}
+                          alt={`Cover of ${book.title}`}
+                          className="w-9 h-11 rounded object-cover border border-slate-200 shadow-xs"
+                        />
+                      ) : (
+                        <div className="w-9 h-11 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-emerald-600">
+                          <BookOpen className="w-5 h-5" />
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-bold text-slate-900 max-w-xs truncate">{book.title}</td>
                     <td className="px-4 py-3">
@@ -275,6 +376,21 @@ export const BooksPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleAddSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Book Cover (Optional)</label>
+                <BookCoverDropzone
+                  preview={coverPreview}
+                  onSelect={(file, preview) => {
+                    setCoverFile(file);
+                    setCoverPreview(preview);
+                  }}
+                  onClear={() => {
+                    setCoverFile(null);
+                    setCoverPreview('');
+                  }}
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700">Book Title *</label>
                 <input
@@ -363,6 +479,21 @@ export const BooksPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Book Cover</label>
+                <BookCoverDropzone
+                  preview={coverPreview}
+                  onSelect={(file, preview) => {
+                    setCoverFile(file);
+                    setCoverPreview(preview);
+                  }}
+                  onClear={() => {
+                    setCoverFile(null);
+                    setCoverPreview('');
+                  }}
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700">Title</label>
                 <input

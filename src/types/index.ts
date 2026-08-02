@@ -25,6 +25,7 @@ export interface Book {
   total_copies: number;
   available_copies: number;
   status: BookStatus;
+  cover_url?: string;
   created_at?: string;
 }
 
@@ -74,6 +75,8 @@ export interface AdminUser {
   role: 'Admin' | 'Librarian';
   status: UserStatus;
   created_at?: string;
+  password?: string;
+  plain_password?: string;
 }
 
 export interface ActivityLog {

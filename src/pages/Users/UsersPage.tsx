@@ -3,18 +3,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
 import { AdminUser } from '../../types';
 import { toast } from 'sonner';
-import { UserPlus, Key, Edit2, Trash2, Power, X } from 'lucide-react';
+import { UserPlus, Key, Edit2, Trash2, Power, X, Copy, CopyCheck } from 'lucide-react';
 
 export const UsersPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Form states
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<'Admin' | 'Librarian'>('Admin');
+  const [password, setPassword] = useState('');
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['adminUsers'],
@@ -22,7 +24,7 @@ export const UsersPage: React.FC = () => {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { username: string; full_name: string; role: 'Admin' | 'Librarian' }) =>
+    mutationFn: (data: { username: string; full_name: string; role: 'Admin' | 'Librarian'; password: string }) =>
       dataService.addAdminUser(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
@@ -31,6 +33,7 @@ export const UsersPage: React.FC = () => {
       setIsCreateOpen(false);
       setUsername('');
       setFullName('');
+      setPassword('');
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to create admin.');
@@ -68,14 +71,30 @@ export const UsersPage: React.FC = () => {
     },
   });
 
-  const handleResetPassword = (u: AdminUser) => {
-    dataService.resetAdminPassword(u.username);
-    toast.success('Password reset.');
+  const handleResetPassword = async (u: AdminUser) => {
+    try {
+      const newPassword = await dataService.resetAdminPassword(u.username);
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+      toast.success(`Password reset. New password: ${newPassword}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reset password.');
+    }
+  };
+
+  const handleCopyPassword = (u: AdminUser) => {
+    if (!u.plain_password) return;
+    navigator.clipboard.writeText(u.plain_password).then(() => {
+      setCopiedId(u.id);
+      toast.success(`Password copied for @${u.username}.`);
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(() => {
+      toast.error('Failed to copy password.');
+    });
   };
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate({ username, full_name: fullName, role });
+    createMutation.mutate({ username, full_name: fullName, role, password });
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
@@ -105,6 +124,7 @@ export const UsersPage: React.FC = () => {
           onClick={() => {
             setUsername('');
             setFullName('');
+            setPassword('');
             setIsCreateOpen(true);
           }}
           className="px-4 py-2.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-2 shadow-md shadow-emerald-200 transition-all"
@@ -122,6 +142,7 @@ export const UsersPage: React.FC = () => {
                 <th className="px-4 py-3">Username</th>
                 <th className="px-4 py-3">Full Name</th>
                 <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Password</th>
                 <th className="px-4 py-3 text-center">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -129,7 +150,7 @@ export const UsersPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-slate-400">
+                  <td colSpan={6} className="text-center py-8 text-slate-400">
                     Loading admin accounts...
                   </td>
                 </tr>
@@ -142,6 +163,27 @@ export const UsersPage: React.FC = () => {
                       <span className="px-2.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
                         {u.role}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleCopyPassword(u)}
+                        disabled={!u.plain_password}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 font-mono text-[11px] text-slate-600 transition-colors group disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700"
+                        title={u.plain_password ? 'Click to copy password' : 'No password set'}
+                      >
+                        {u.plain_password ? (
+                          <>
+                            <span className="truncate max-w-[120px]">{u.plain_password}</span>
+                            {copiedId === u.id ? (
+                              <CopyCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                            ) : (
+                              <Copy className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 shrink-0" />
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span
@@ -244,6 +286,19 @@ export const UsersPage: React.FC = () => {
                   <option value="Admin">Admin</option>
                   <option value="Librarian">Librarian</option>
                 </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600">Password *</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="At least 6 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
+                />
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
