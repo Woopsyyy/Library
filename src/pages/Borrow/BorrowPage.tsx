@@ -25,7 +25,7 @@ export const BorrowPage: React.FC = () => {
   const [course, setCourse] = useState('BS Information Technology');
   const [yearLevel, setYearLevel] = useState('3rd Year');
   const [section, setSection] = useState('');
-  const [durationDays, setDurationDays] = useState<number>(5);
+  const [durationDays, setDurationDays] = useState<number>(3);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -55,8 +55,8 @@ export const BorrowPage: React.FC = () => {
       return;
     }
 
-    if (durationDays < 1 || durationDays > 7) {
-      toast.error('Borrow duration cannot exceed 7 days.');
+    if (durationDays < 1 || durationDays > 3) {
+      toast.error('Borrow duration cannot exceed 3 days.');
       return;
     }
 
@@ -67,7 +67,7 @@ export const BorrowPage: React.FC = () => {
 
     setSubmitting(true);
     try {
-      await dataService.submitBorrowRequest({
+      const request = await dataService.submitBorrowRequest({
         student_name: studentName,
         student_id: studentId,
         course,
@@ -80,7 +80,12 @@ export const BorrowPage: React.FC = () => {
       toast.success('Borrow request submitted successfully.');
       navigate('/request-success', {
         state: {
+          inquiryNumber: request.inquiry_number,
           studentName,
+          studentId,
+          course,
+          yearLevel,
+          section,
           bookTitle: selectedBook?.title || 'Book',
           durationDays,
         },
@@ -106,7 +111,7 @@ export const BorrowPage: React.FC = () => {
       <div className="border-b border-slate-200 pb-4">
         <h1 className="text-3xl font-black text-slate-900">Submit Borrow Request</h1>
         <p className="text-slate-600 text-sm mt-1 font-medium">
-          Please fill out your student details and select your requested duration (1-7 days).
+          Please fill out your student details and select your requested duration (1-3 days).
         </p>
       </div>
 
@@ -195,14 +200,14 @@ export const BorrowPage: React.FC = () => {
 
             <div className="space-y-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-700 font-medium">Duration (1-7 Days):</span>
+                <span className="text-slate-700 font-medium">Duration (1-3 Days):</span>
                 <span className="font-extrabold text-emerald-700 text-base">{durationDays} Day(s)</span>
               </div>
 
               <input
                 type="range"
                 min={1}
-                max={7}
+                max={3}
                 value={durationDays}
                 onChange={(e) => setDurationDays(Number(e.target.value))}
                 className="w-full accent-emerald-600 h-2 bg-slate-200 rounded-lg cursor-pointer"
@@ -210,9 +215,8 @@ export const BorrowPage: React.FC = () => {
 
               <div className="flex justify-between text-[11px] font-bold text-slate-500">
                 <span>1 Day</span>
-                <span>3 Days</span>
-                <span>5 Days</span>
-                <span>7 Days (Max)</span>
+                <span>2 Days</span>
+                <span>3 Days (Max)</span>
               </div>
             </div>
           </div>

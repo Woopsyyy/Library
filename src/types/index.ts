@@ -31,6 +31,7 @@ export interface Book {
 
 export interface BorrowRequest {
   id: string;
+  inquiry_number: string;
   student_name: string;
   student_id: string;
   course: string;

@@ -37,13 +37,14 @@ ALTER TABLE public.books ADD COLUMN IF NOT EXISTS cover_url VARCHAR(500);
 -- 4. BORROW REQUESTS TABLE
 CREATE TABLE IF NOT EXISTS public.borrow_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    inquiry_number VARCHAR(50) NOT NULL,
     student_name VARCHAR(255) NOT NULL,
     student_id VARCHAR(100) NOT NULL,
     course VARCHAR(100) NOT NULL,
     year_level VARCHAR(50) NOT NULL,
     section VARCHAR(50) NOT NULL,
     book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
-    duration_days INT NOT NULL CHECK (duration_days >= 1 AND duration_days <= 7),
+    duration_days INT NOT NULL CHECK (duration_days >= 1 AND duration_days <= 3),
     request_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'Pending' CHECK (status IN ('Pending', 'Approved', 'Rejected'))
 );
@@ -245,3 +246,6 @@ DROP POLICY IF EXISTS "Allow public read book-covers" ON storage.objects;
 CREATE POLICY "Allow public read book-covers"
     ON storage.objects FOR SELECT
     USING (bucket_id = 'book-covers');
+
+-- Add inquiry_number column to existing borrow_requests tables (safe to re-run)
+ALTER TABLE public.borrow_requests ADD COLUMN IF NOT EXISTS inquiry_number VARCHAR(50);

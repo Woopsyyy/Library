@@ -113,6 +113,18 @@ function generateTemporaryPassword(length = 8): string {
   return Array.from(values, v => chars[v % chars.length]).join('');
 }
 
+// Generate a unique, formatted inquiry number for a borrow request.
+function generateInquiryNumber(): string {
+  const date = new Date();
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `TLB-${yyyy}${mm}${dd}-${hh}${min}${ss}`;
+}
+
 const BOOK_COVER_BUCKET = 'book-covers';
 const MAX_COVER_SIZE = 5 * 1024 * 1024;
 
@@ -427,6 +439,35 @@ export const dataService = {
     return getLocal<BorrowRequest[]>(STORAGE_KEYS.REQUESTS, []);
   },
 
+  async getBorrowRequestByInquiryNumber(inquiryNumber: string): Promise<BorrowRequest> {
+    const clean = inquiryNumber.trim().toUpperCase();
+    if (!clean) throw new Error('Please enter your inquiry number.');
+
+    let requests: BorrowRequest[] = [];
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase
+        .from('borrow_requests')
+        .select('*')
+        .ilike('inquiry_number', clean);
+      if (!error && data && data.length > 0) requests = data;
+    }
+    if (requests.length === 0) {
+      requests = getLocal<BorrowRequest[]>(STORAGE_KEYS.REQUESTS, []);
+    }
+
+    const found = requests.find(r => r.inquiry_number?.toUpperCase() === clean);
+    if (!found) throw new Error('No request found with that inquiry number.');
+
+    const books = await this.getBooks();
+    const book = books.find(b => b.id === found.book_id);
+    return {
+      ...found,
+      book_title: found.book_title || book?.title || 'Book',
+      book_type: found.book_type || book?.type_name,
+      book_series: found.book_series || book?.series_name,
+    };
+  },
+
   async submitBorrowRequest(data: {
     student_name: string;
     student_id: string;
@@ -446,8 +487,8 @@ export const dataService = {
     if (!data.student_name.trim() || !data.student_id.trim() || !data.course.trim() || !data.year_level.trim() || !data.section.trim()) {
       throw new Error('Please complete all required fields.');
     }
-    if (data.duration_days < 1 || data.duration_days > 7) {
-      throw new Error('Borrow duration cannot exceed 7 days.');
+    if (data.duration_days < 1 || data.duration_days > 3) {
+      throw new Error('Borrow duration cannot exceed 3 days.');
     }
 
     const books = await this.getBooks();
@@ -468,6 +509,7 @@ export const dataService = {
 
     const newReq: BorrowRequest = {
       id: 'req-' + Date.now(),
+      inquiry_number: generateInquiryNumber(),
       student_name: data.student_name.trim(),
       student_id: data.student_id.trim(),
       course: data.course.trim(),
@@ -484,6 +526,7 @@ export const dataService = {
 
     if (isSupabaseConfigured && supabase) {
       const reqForDb = {
+        inquiry_number: newReq.inquiry_number,
         student_name: newReq.student_name,
         student_id: newReq.student_id,
         course: newReq.course,
