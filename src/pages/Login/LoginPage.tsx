@@ -2,19 +2,13 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { dataService } from '../../services/dataService';
 import { toast } from 'sonner';
-import { Shield, KeyRound, User, Library, ArrowLeft, Key } from 'lucide-react';
+import { Shield, KeyRound, User, Library, ArrowLeft } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const fillSeedAccount = () => {
-    setUsername('woopsy');
-    setPassword('09939057827');
-    toast.info('Seed admin credentials autofilled.');
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,25 +99,6 @@ export const LoginPage: React.FC = () => {
               <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
             </button>
           </form>
-
-          {/* Seed Account Quick Fill Box */}
-          <div className="pt-4 border-t border-slate-100 space-y-2">
-            <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-              <span>Seed Admin Account:</span>
-              <button
-                type="button"
-                onClick={fillSeedAccount}
-                className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 hover:underline"
-              >
-                <Key className="w-3 h-3" />
-                <span>Autofill</span>
-              </button>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-mono space-y-1 text-slate-800">
-              <p><span className="text-slate-500">Username:</span> woopsy</p>
-              <p><span className="text-slate-500">Password:</span> 09939057827</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>

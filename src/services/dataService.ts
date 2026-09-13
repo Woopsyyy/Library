@@ -934,20 +934,6 @@ export const dataService = {
       throw new Error(conn.message || 'Database connection error. Please run supabase.txt SQL script in Supabase.');
     }
 
-    // Seed account fallback
-    if (cleanUser === 'woopsy' && password === '09939057827') {
-      const authUser: AdminUser = {
-        id: 'usr-1',
-        username: 'woopsy',
-        full_name: 'System Administrator',
-        role: 'Admin',
-        status: 'Active',
-      };
-      setLocal(STORAGE_KEYS.AUTH, authUser);
-      logActivity('Login successful', `Admin ${cleanUser} logged in`, cleanUser);
-      return authUser;
-    }
-
     // Check database users
     const users = await this.getAdminUsers();
     const found = users.find(u => u.username.toLowerCase() === cleanUser.toLowerCase());
