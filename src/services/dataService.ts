@@ -1,5 +1,5 @@
-import { 
-  Book, BookType, BookSeries, BorrowRequest, BorrowRecord, BorrowRecordStatus, ReturnRecord, AdminUser, ActivityLog 
+import {
+  Book, BookType, BookSeries, Author, Tag, BookCopy, BorrowRequest, BorrowRecord, BorrowRecordStatus, ReturnRecord, User, AccountType, ActivityLog
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -7,14 +7,36 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 const STORAGE_KEYS = {
   TYPES: 'talisay_book_types',
   SERIES: 'talisay_book_series',
+  AUTHORS: 'talisay_authors',
+  TAGS: 'talisay_tags',
+  COPIES: 'talisay_book_copies',
   BOOKS: 'talisay_books',
   REQUESTS: 'talisay_borrow_requests',
   RECORDS: 'talisay_borrow_records',
   RETURNS: 'talisay_returns',
-  USERS: 'talisay_admin_users',
+  USERS: 'talisay_users',
   LOGS: 'talisay_activity_logs',
+  // Single session for both account types; AUTH/STUDENT_AUTH are legacy keys (read-only fallback).
+  SESSION: 'talisay_session',
   AUTH: 'talisay_auth_user',
+  STUDENT_AUTH: 'talisay_student_auth',
+  LEGACY_ADMIN_USERS: 'talisay_admin_users',
+  LEGACY_STUDENTS: 'talisay_student_users',
 };
+
+// School ID format: <current year>-<random four digits>, e.g. 2026-4821
+export function generateSchoolId(): string {
+  const year = new Date().getFullYear();
+  const digits = String(Math.floor(1000 + Math.random() * 9000));
+  return `${year}-${digits}`;
+}
+
+export function isValidSchoolId(schoolId: string): boolean {
+  const clean = schoolId.trim();
+  if (!/^\d{4}-\d{4}$/.test(clean)) return false;
+  const year = new Date().getFullYear();
+  return clean.startsWith(`${year}-`);
+}
 
 // Helper to get / set LocalStorage
 function getLocal<T>(key: string, defaultValue: T): T {
@@ -37,6 +59,61 @@ function setLocal<T>(key: string, value: T): void {
   } catch (err) {
     console.error(`Error writing ${key} to storage:`, err);
   }
+}
+
+// Normalize a row (Supabase or legacy local shape) into a User.
+function normalizeUser(row: any, fallbackType: AccountType = 'student'): User {
+  const type: AccountType = row.account_type === 'admin' ? 'admin' : fallbackType;
+  return {
+    id: String(row.id ?? 'usr-' + Date.now()),
+    account_type: type,
+    username: row.username || '',
+    school_id: row.school_id || '',
+    full_name: row.full_name || '',
+    role: row.role || (type === 'admin' ? 'Admin' : 'Student'),
+    status: row.status || 'Active',
+    created_at: row.created_at,
+    password: row.password,
+    plain_password: row.plain_password,
+  };
+}
+
+// Merged local user list: new key first, then legacy per-type keys.
+function getLocalUsers(): User[] {
+  try {
+    const merged = localStorage.getItem(STORAGE_KEYS.USERS);
+    if (merged) return (JSON.parse(merged) as any[]).map(r => normalizeUser(r));
+  } catch { /* fall through to legacy keys */ }
+  try {
+    const admins = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEGACY_ADMIN_USERS) || '[]');
+    const students = JSON.parse(localStorage.getItem(STORAGE_KEYS.LEGACY_STUDENTS) || '[]');
+    return [
+      ...(admins as any[]).map(r => normalizeUser(r, 'admin')),
+      ...(students as any[]).map(r => normalizeUser(r, 'student')),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+// Current session: new single key, then legacy per-type sessions.
+function readSession(): User | null {
+  for (const key of [STORAGE_KEYS.SESSION, STORAGE_KEYS.AUTH, STORAGE_KEYS.STUDENT_AUTH]) {
+    try {
+      const data = localStorage.getItem(key);
+      if (!data) continue;
+      const row = JSON.parse(data);
+      const fallback: AccountType = key === STORAGE_KEYS.AUTH ? 'admin' : 'student';
+      return normalizeUser(row, fallback);
+    } catch { /* try next key */ }
+  }
+  return null;
+}
+
+function clearSessions(): void {
+  localStorage.removeItem(STORAGE_KEYS.SESSION);
+  localStorage.removeItem(STORAGE_KEYS.AUTH);
+  localStorage.removeItem(STORAGE_KEYS.STUDENT_AUTH);
 }
 
 // Check database connection
@@ -278,6 +355,238 @@ export const dataService = {
     logActivity('Series removed', `Deleted series "${target?.name || id}"`);
   },
 
+  // AUTHORS
+  async getAuthors(): Promise<Author[]> {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.from('authors').select('*').order('name');
+      if (!error && data) return data;
+    }
+    return getLocal<Author[]>(STORAGE_KEYS.AUTHORS, []);
+  },
+
+  async addAuthor(name: string): Promise<Author> {
+    const cleanName = name.trim();
+    if (!cleanName) throw new Error('Author name is required.');
+
+    const conn = await validateDatabaseConnection();
+    if (!conn.connected && isSupabaseConfigured) {
+      throw new Error(conn.message || 'Database not connected.');
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.from('authors').insert([{ name: cleanName }]).select().single();
+      if (error) {
+        if (/duplicate|already exists/i.test(error.message)) throw new Error('Author already exists.');
+        throw new Error(error.message);
+      }
+      logActivity('Author added', `Added author "${cleanName}"`);
+      return data;
+    }
+
+    const authors = getLocal<Author[]>(STORAGE_KEYS.AUTHORS, []);
+    if (authors.some(a => a.name.toLowerCase() === cleanName.toLowerCase())) {
+      throw new Error('Author already exists.');
+    }
+    const newAuthor: Author = { id: 'author-' + Date.now(), name: cleanName, created_at: new Date().toISOString() };
+    authors.push(newAuthor);
+    setLocal(STORAGE_KEYS.AUTHORS, authors);
+    logActivity('Author added', `Added author "${cleanName}"`);
+    return newAuthor;
+  },
+
+  async deleteAuthor(id: string): Promise<void> {
+    const conn = await validateDatabaseConnection();
+    if (!conn.connected && isSupabaseConfigured) {
+      throw new Error(conn.message || 'Database not connected.');
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('authors').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+      logActivity('Author removed', `Deleted author ID ${id}`);
+      return;
+    }
+
+    const authors = getLocal<Author[]>(STORAGE_KEYS.AUTHORS, []);
+    const target = authors.find(a => a.id === id);
+    setLocal(STORAGE_KEYS.AUTHORS, authors.filter(a => a.id !== id));
+    logActivity('Author removed', `Deleted author "${target?.name || id}"`);
+  },
+
+  // TAGS
+  async getTags(): Promise<Tag[]> {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.from('tags').select('*').order('name');
+      if (!error && data) return data;
+    }
+    return getLocal<Tag[]>(STORAGE_KEYS.TAGS, []);
+  },
+
+  async addTag(name: string): Promise<Tag> {
+    const cleanName = name.trim();
+    if (!cleanName) throw new Error('Tag name is required.');
+
+    const conn = await validateDatabaseConnection();
+    if (!conn.connected && isSupabaseConfigured) {
+      throw new Error(conn.message || 'Database not connected.');
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.from('tags').insert([{ name: cleanName }]).select().single();
+      if (error) {
+        if (/duplicate|already exists/i.test(error.message)) throw new Error('Tag already exists.');
+        throw new Error(error.message);
+      }
+      logActivity('Tag added', `Added tag "${cleanName}"`);
+      return data;
+    }
+
+    const tags = getLocal<Tag[]>(STORAGE_KEYS.TAGS, []);
+    if (tags.some(t => t.name.toLowerCase() === cleanName.toLowerCase())) {
+      throw new Error('Tag already exists.');
+    }
+    const newTag: Tag = { id: 'tag-' + Date.now(), name: cleanName, created_at: new Date().toISOString() };
+    tags.push(newTag);
+    setLocal(STORAGE_KEYS.TAGS, tags);
+    logActivity('Tag added', `Added tag "${cleanName}"`);
+    return newTag;
+  },
+
+  async deleteTag(id: string): Promise<void> {
+    const conn = await validateDatabaseConnection();
+    if (!conn.connected && isSupabaseConfigured) {
+      throw new Error(conn.message || 'Database not connected.');
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('tags').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+      logActivity('Tag removed', `Deleted tag ID ${id}`);
+      return;
+    }
+
+    const tags = getLocal<Tag[]>(STORAGE_KEYS.TAGS, []);
+    const target = tags.find(t => t.id === id);
+    setLocal(STORAGE_KEYS.TAGS, tags.filter(t => t.id !== id));
+    logActivity('Tag removed', `Deleted tag "${target?.name || id}"`);
+  },
+
+  // Resolve a typed series name to an id, creating the series entry when new.
+  async resolveSeriesId(name: string): Promise<{ id: string; name: string }> {
+    const clean = name.trim();
+    if (!clean) throw new Error('Series is required.');
+    const series = await this.getBookSeries();
+    const found = series.find(s => s.name.toLowerCase() === clean.toLowerCase());
+    if (found) return { id: found.id, name: found.name };
+    const created = await this.addBookSeries(clean);
+    return { id: created.id, name: created.name };
+  },
+
+  // Ensure free-typed author/tags exist in the lookup tables (best effort).
+  async ensureAuthor(name: string): Promise<string> {
+    const clean = name.trim();
+    if (!clean) return '';
+    const authors = await this.getAuthors();
+    if (authors.some(a => a.name.toLowerCase() === clean.toLowerCase())) return clean;
+    try {
+      const created = await this.addAuthor(clean);
+      return created.name;
+    } catch {
+      return clean;
+    }
+  },
+
+  async ensureTags(names: string[]): Promise<string[]> {
+    // Tags must already exist in the database (managed in Config) —
+    // unknown entries are dropped, never auto-created.
+    const cleaned = [...new Set(names.map(n => n.trim()).filter(Boolean))];
+    if (cleaned.length === 0) return [];
+    const tags = await this.getTags();
+    const known = new Set(tags.map(t => t.name.toLowerCase()));
+    return cleaned.filter(n => known.has(n.toLowerCase()));
+  },
+
+  // ---- Per-copy serial numbers (TLB-<book>-001, ...) ----
+  makeSerial(bookId: string, n: number): string {
+    const key = bookId.replace(/-/g, '').slice(0, 8).toUpperCase().padEnd(8, 'X');
+    return `TLB-${key}-${String(n).padStart(3, '0')}`;
+  },
+
+  nextCopyNumber(copies: BookCopy[]): number {
+    let max = 0;
+    for (const c of copies) {
+      const m = /-(\d+)$/.exec(c.serial_number || '');
+      if (m) max = Math.max(max, Number(m[1]));
+    }
+    return max + 1;
+  },
+
+  async getBookCopies(bookId: string): Promise<BookCopy[]> {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase
+        .from('book_copies')
+        .select('*')
+        .eq('book_id', bookId)
+        .order('serial_number');
+      if (!error && data) return data;
+    }
+    return getLocal<BookCopy[]>(STORAGE_KEYS.COPIES, []).filter(c => c.book_id === bookId);
+  },
+
+  async setCopyStatus(copyId: string, status: 'Available' | 'Borrowed'): Promise<void> {
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('book_copies').update({ status }).eq('id', copyId);
+      if (error) throw new Error(error.message);
+    } else {
+      const all = getLocal<BookCopy[]>(STORAGE_KEYS.COPIES, []).map(c =>
+        c.id === copyId ? { ...c, status } : c
+      );
+      setLocal(STORAGE_KEYS.COPIES, all);
+    }
+  },
+
+  // Grow/shrink the copy list to match `total`. Never removes borrowed copies —
+  // throws when total is set below the borrowed count.
+  async reconcileCopies(bookId: string, total: number): Promise<{ total: number; available: number }> {
+    const copies = await this.getBookCopies(bookId);
+    const borrowed = copies.filter(c => c.status === 'Borrowed').length;
+    if (total < borrowed) {
+      throw new Error(`Cannot set total below ${borrowed} (copies are currently borrowed).`);
+    }
+    let next = this.nextCopyNumber(copies);
+
+    if (copies.length < total) {
+      const toAdd: Partial<BookCopy>[] = [];
+      for (let i = copies.length; i < total; i++, next++) {
+        toAdd.push({ book_id: bookId, serial_number: this.makeSerial(bookId, next), status: 'Available' });
+      }
+      if (isSupabaseConfigured && supabase) {
+        const { error } = await supabase.from('book_copies').insert(toAdd);
+        if (error) throw new Error(error.message);
+      } else {
+        const all = getLocal<BookCopy[]>(STORAGE_KEYS.COPIES, []);
+        toAdd.forEach((c, i) => all.push({ id: `copy-${Date.now()}-${i}`, created_at: new Date().toISOString(), ...c } as BookCopy));
+        setLocal(STORAGE_KEYS.COPIES, all);
+      }
+    } else if (copies.length > total) {
+      const removeCount = copies.length - total;
+      const removable = copies.filter(c => c.status === 'Available').slice(0, removeCount);
+      if (removable.length < removeCount) {
+        throw new Error(`Cannot remove copies — only ${removable.length} are available (rest are borrowed).`);
+      }
+      const ids = new Set(removable.map(c => c.id));
+      if (isSupabaseConfigured && supabase) {
+        const { error } = await supabase.from('book_copies').delete().in('id', [...ids]);
+        if (error) throw new Error(error.message);
+      } else {
+        setLocal(STORAGE_KEYS.COPIES, getLocal<BookCopy[]>(STORAGE_KEYS.COPIES, []).filter(c => !ids.has(c.id)));
+      }
+    }
+
+    const fresh = await this.getBookCopies(bookId);
+    return { total: fresh.length, available: fresh.filter(c => c.status === 'Available').length };
+  },
+
   // BOOKS
   async getBooks(): Promise<Book[]> {
     const types = await this.getBookTypes();
@@ -301,11 +610,14 @@ export const dataService = {
         available_copies: Number(b.available_copies) || 0,
         type_name: typeObj ? typeObj.name : (b.type_name || 'Unassigned'),
         series_name: seriesObj ? seriesObj.name : (b.series_name || 'Unassigned'),
+        author: b.author || '',
+        published_date: b.published_date || null,
+        tags: Array.isArray(b.tags) ? b.tags : [],
       };
     });
   },
 
-  async addBook(data: { title: string; type_id: string; series_id: string; total_copies: number; cover_file?: File | null }): Promise<Book> {
+  async addBook(data: { title: string; type_id: string; series_name: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; cover_file?: File | null }): Promise<Book> {
     if (!data.title.trim()) throw new Error('Book title is required.');
     if (data.total_copies < 1) throw new Error('Total copies must be at least 1.');
 
@@ -316,32 +628,43 @@ export const dataService = {
 
     const total = Number(data.total_copies);
     const types = await this.getBookTypes();
-    const series = await this.getBookSeries();
     const typeObj = types.find(t => t.id === data.type_id);
-    const seriesObj = series.find(s => s.id === data.series_id);
+    if (!typeObj) throw new Error('Please select a book type.');
+    const series = await this.resolveSeriesId(data.series_name);
+    const author = await this.ensureAuthor(data.author || '');
+    const tags = await this.ensureTags(data.tags || []);
+    const published = (data.published_date || '').trim() || null;
 
     const cover_url = data.cover_file ? await resolveCoverUrl(data.cover_file) : undefined;
 
     const newBookObj = {
       title: data.title.trim(),
       type_id: data.type_id,
-      series_id: data.series_id,
+      series_id: series.id,
       total_copies: total,
       available_copies: total,
       status: 'Available' as const,
+      author,
+      published_date: published,
+      tags,
       ...(cover_url ? { cover_url } : {}),
     };
 
     if (isSupabaseConfigured && supabase) {
       const { data: inserted, error } = await supabase.from('books').insert([newBookObj]).select().single();
       if (error) throw new Error(error.message);
+      const counts = await this.reconcileCopies(inserted.id, total);
+      await supabase.from('books').update({ total_copies: counts.total, available_copies: counts.available }).eq('id', inserted.id);
       logActivity('Book added', `Added book "${data.title}" (${total} copies)`);
       return {
         ...inserted,
-        total_copies: Number(inserted.total_copies) || 0,
-        available_copies: Number(inserted.available_copies) || 0,
+        total_copies: counts.total,
+        available_copies: counts.available,
         type_name: typeObj?.name || '',
-        series_name: seriesObj?.name || '',
+        series_name: series.name,
+        author: inserted.author || '',
+        published_date: inserted.published_date || null,
+        tags: Array.isArray(inserted.tags) ? inserted.tags : [],
       };
     }
 
@@ -350,16 +673,20 @@ export const dataService = {
       id: 'book-' + Date.now(),
       ...newBookObj,
       type_name: typeObj?.name || '',
-      series_name: seriesObj?.name || '',
+      series_name: series.name,
       created_at: new Date().toISOString(),
     };
     books.unshift(newBook);
+    setLocal(STORAGE_KEYS.BOOKS, books);
+    const counts = await this.reconcileCopies(newBook.id, total);
+    newBook.total_copies = counts.total;
+    newBook.available_copies = counts.available;
     setLocal(STORAGE_KEYS.BOOKS, books);
     logActivity('Book added', `Added book "${data.title}" (${total} copies)`);
     return newBook;
   },
 
-  async updateBook(id: string, updates: Partial<Book> & { cover_file?: File | null }): Promise<Book> {
+  async updateBook(id: string, updates: Partial<Book> & { series_name?: string; cover_file?: File | null }): Promise<Book> {
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
       throw new Error(conn.message || 'Database not connected.');
@@ -367,14 +694,37 @@ export const dataService = {
 
     const books = getLocal<Book[]>(STORAGE_KEYS.BOOKS, []);
     const index = books.findIndex(b => b.id === id);
-    
-    const totalCopies = updates.total_copies !== undefined ? Number(updates.total_copies) : (books[index]?.total_copies || 1);
-    const availCopies = updates.available_copies !== undefined ? Number(updates.available_copies) : (books[index]?.available_copies || 1);
+
+    // Copy serials are the source of truth for counts.
+    const existingCopies = await this.getBookCopies(id);
+    const targetTotal = updates.total_copies !== undefined
+      ? Number(updates.total_copies)
+      : (existingCopies.length || books[index]?.total_copies || 1);
+    if (targetTotal < 1) throw new Error('Total copies must be at least 1.');
+    const counts = await this.reconcileCopies(id, targetTotal);
+    const totalCopies = counts.total;
+    const availCopies = counts.available;
 
     const bookUpdates: Partial<Book> = { ...updates };
     delete (bookUpdates as Partial<Book> & { cover_file?: File | null }).cover_file;
+    delete (bookUpdates as Partial<Book> & { series_name?: string }).series_name;
     if (updates.cover_file) {
       bookUpdates.cover_url = await resolveCoverUrl(updates.cover_file);
+    }
+    // Free-typed series name resolves (and auto-creates) the series entry.
+    if (updates.series_name !== undefined) {
+      const series = await this.resolveSeriesId(updates.series_name);
+      bookUpdates.series_id = series.id;
+    }
+    // Keep lookup tables complete when new author/tags are typed in.
+    if (updates.author !== undefined) {
+      bookUpdates.author = await this.ensureAuthor(updates.author);
+    }
+    if (updates.tags !== undefined) {
+      bookUpdates.tags = await this.ensureTags(updates.tags);
+    }
+    if (updates.published_date !== undefined) {
+      bookUpdates.published_date = (updates.published_date || '').trim() || null;
     }
 
     const updatedBook: Book = {
@@ -398,6 +748,9 @@ export const dataService = {
         total_copies: updatedBook.total_copies,
         available_copies: updatedBook.available_copies,
         status: updatedBook.status,
+        author: updatedBook.author || '',
+        published_date: (updatedBook.published_date || '').trim() || null,
+        tags: Array.isArray(updatedBook.tags) ? updatedBook.tags : [],
         ...(updatedBook.cover_url ? { cover_url: updatedBook.cover_url } : {}),
       }).eq('id', id);
       if (error) throw new Error(error.message);
@@ -562,8 +915,17 @@ export const dataService = {
 
     const books = await this.getBooks();
     const targetBook = books.find(b => b.id === req.book_id);
-    let newAvailableCopies = targetBook ? Math.max(0, targetBook.available_copies - 1) : 0;
-    let newBookStatus = newAvailableCopies === 0 ? 'Borrowed' : (targetBook?.status || 'Available');
+
+    // Assign one specific physical copy by serial number.
+    const availableCopies = (await this.getBookCopies(req.book_id))
+      .filter(c => c.status === 'Available')
+      .sort((a, b) => a.serial_number.localeCompare(b.serial_number));
+    if (availableCopies.length === 0) {
+      throw new Error('No available copies — every serial of this book is currently lent out.');
+    }
+    const assigned = availableCopies[0];
+    const newAvailableCopies = availableCopies.length - 1;
+    const newBookStatus = newAvailableCopies === 0 ? 'Borrowed' : (targetBook?.status || 'Available');
 
     const borrowDate = new Date();
     const dueDate = new Date();
@@ -576,12 +938,14 @@ export const dataService = {
       student_id: req.student_id,
       book_id: req.book_id,
       book_title: req.book_title || targetBook?.title || 'Book',
+      serial_number: assigned.serial_number,
       borrow_date: borrowDate.toISOString(),
       due_date: dueDate.toISOString(),
       status: 'Borrowed',
     };
 
     if (isSupabaseConfigured && supabase) {
+      await this.setCopyStatus(assigned.id, 'Borrowed');
       const { error: reqErr } = await supabase.from('borrow_requests').update({ status: 'Approved' }).eq('id', requestId);
       if (reqErr) throw new Error(reqErr.message);
 
@@ -590,6 +954,7 @@ export const dataService = {
         student_name: newRecord.student_name,
         student_id: newRecord.student_id,
         book_id: newRecord.book_id,
+        serial_number: newRecord.serial_number,
         borrow_date: newRecord.borrow_date,
         due_date: newRecord.due_date,
         status: newRecord.status,
@@ -597,12 +962,13 @@ export const dataService = {
       if (recErr) throw new Error(recErr.message);
 
       if (targetBook) {
-        await supabase.from('books').update({ 
-          available_copies: newAvailableCopies, 
-          status: newBookStatus 
+        await supabase.from('books').update({
+          available_copies: newAvailableCopies,
+          status: newBookStatus
         }).eq('id', req.book_id);
       }
     } else {
+      await this.setCopyStatus(assigned.id, 'Borrowed');
       req.status = 'Approved';
       setLocal(STORAGE_KEYS.REQUESTS, requests);
       const records = getLocal<BorrowRecord[]>(STORAGE_KEYS.RECORDS, []);
@@ -610,7 +976,7 @@ export const dataService = {
       setLocal(STORAGE_KEYS.RECORDS, records);
     }
 
-    logActivity('Borrow approved', `Approved request for ${req.student_name} ("${newRecord.book_title}")`);
+    logActivity('Borrow approved', `Approved request for ${req.student_name} ("${newRecord.book_title}", serial ${assigned.serial_number})`);
   },
 
   async rejectBorrowRequest(requestId: string): Promise<void> {
@@ -678,13 +1044,21 @@ export const dataService = {
 
     const books = await this.getBooks();
     const targetBook = books.find(b => b.id === rec.book_id);
-    const newAvail = (targetBook?.available_copies || 0) + 1;
+
+    // Free the exact physical copy that was lent out.
+    if (rec.serial_number) {
+      const copy = (await this.getBookCopies(rec.book_id)).find(c => c.serial_number === rec.serial_number);
+      if (copy) await this.setCopyStatus(copy.id, 'Available');
+    }
+    const freshCopies = await this.getBookCopies(rec.book_id);
+    const newAvail = freshCopies.filter(c => c.status === 'Available').length;
 
     const newReturn: ReturnRecord = {
       id: 'ret-' + Date.now(),
       record_id: rec.id,
       student_name: rec.student_name,
       book_title: rec.book_title || 'Book',
+      serial_number: rec.serial_number || '',
       borrow_date: rec.borrow_date,
       return_date: new Date().toISOString(),
       status: 'Returned',
@@ -698,6 +1072,7 @@ export const dataService = {
         record_id: newReturn.record_id,
         student_name: newReturn.student_name,
         book_title: newReturn.book_title,
+        serial_number: newReturn.serial_number,
         borrow_date: newReturn.borrow_date,
         return_date: newReturn.return_date,
         status: newReturn.status,
@@ -729,16 +1104,24 @@ export const dataService = {
     return getLocal<ReturnRecord[]>(STORAGE_KEYS.RETURNS, []);
   },
 
-  // USERS MANAGEMENT
-  async getAdminUsers(): Promise<AdminUser[]> {
+  // USERS MANAGEMENT (single "users" table for admins + students)
+  async getUsers(): Promise<User[]> {
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('admin_users').select('*').order('created_at', { ascending: false });
-      if (!error && data) return data;
+      const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: false });
+      if (!error && data) return (data as any[]).map(r => normalizeUser(r));
     }
-    return getLocal<AdminUser[]>(STORAGE_KEYS.USERS, []);
+    return getLocalUsers();
   },
 
-  async addAdminUser(data: { username: string; full_name: string; role: 'Admin' | 'Librarian'; password: string }): Promise<AdminUser> {
+  async getAdminUsers(): Promise<User[]> {
+    return (await this.getUsers()).filter(u => u.account_type === 'admin');
+  },
+
+  async getStudentUsers(): Promise<User[]> {
+    return (await this.getUsers()).filter(u => u.account_type === 'student');
+  },
+
+  async addAdminUser(data: { username: string; full_name: string; role: 'Admin' | 'Librarian'; password: string }): Promise<User> {
     const cleanUser = data.username.trim();
     const cleanName = data.full_name.trim();
     if (!cleanUser || !cleanName) throw new Error('Username and Full Name are required.');
@@ -751,9 +1134,11 @@ export const dataService = {
       throw new Error(conn.message || 'Database not connected.');
     }
 
-    const newUser: AdminUser = {
+    const newUser: User = {
       id: 'usr-' + Date.now(),
+      account_type: 'admin',
       username: cleanUser,
+      school_id: '',
       full_name: cleanName,
       role: data.role,
       status: 'Active',
@@ -763,8 +1148,10 @@ export const dataService = {
     };
 
     if (isSupabaseConfigured && supabase) {
-      const { data: inserted, error } = await supabase.from('admin_users').insert([{
+      const { data: inserted, error } = await supabase.from('users').insert([{
+        account_type: newUser.account_type,
         username: newUser.username,
+        school_id: newUser.school_id,
         full_name: newUser.full_name,
         role: newUser.role,
         status: newUser.status,
@@ -772,32 +1159,38 @@ export const dataService = {
         password: newUser.password,
         plain_password: newUser.plain_password,
       }]).select().single();
-      if (error) throw new Error(error.message);
+      if (error) {
+        if (/duplicate|already exists/i.test(error.message)) throw new Error('This username is already taken.');
+        throw new Error(error.message);
+      }
       logActivity('Admin created', `Created admin user "${cleanUser}" (${cleanName})`);
       return inserted;
     }
 
-    const users = getLocal<AdminUser[]>(STORAGE_KEYS.USERS, []);
+    const users = getLocalUsers();
+    if (users.some(u => u.username && u.username.toLowerCase() === cleanUser.toLowerCase())) {
+      throw new Error('This username is already taken.');
+    }
     users.unshift(newUser);
     setLocal(STORAGE_KEYS.USERS, users);
     logActivity('Admin created', `Created admin user "${cleanUser}" (${cleanName})`);
     return newUser;
   },
 
-  async updateAdminUser(id: string, updates: Partial<AdminUser>): Promise<AdminUser> {
+  async updateAdminUser(id: string, updates: Partial<User>): Promise<User> {
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
       throw new Error(conn.message || 'Database not connected.');
     }
 
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('admin_users').update(updates).eq('id', id).select().single();
+      const { data, error } = await supabase.from('users').update(updates).eq('id', id).select().single();
       if (error) throw new Error(error.message);
       logActivity('Admin updated', `Updated admin user ID ${id}`);
       return data;
     }
 
-    const users = getLocal<AdminUser[]>(STORAGE_KEYS.USERS, []);
+    const users = getLocalUsers();
     const index = users.findIndex(u => u.id === id);
     if (index === -1) throw new Error('User not found.');
 
@@ -821,11 +1214,11 @@ export const dataService = {
     const newStatus = target.status === 'Active' ? 'Disabled' : 'Active';
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('admin_users').update({ status: newStatus }).eq('id', id);
+      const { error } = await supabase.from('users').update({ status: newStatus }).eq('id', id);
       if (error) throw new Error(error.message);
     } else {
-      target.status = newStatus;
-      setLocal(STORAGE_KEYS.USERS, users);
+      const all = getLocalUsers().map(u => u.id === id ? { ...u, status: newStatus } : u);
+      setLocal(STORAGE_KEYS.USERS, all);
     }
 
     logActivity('Admin updated', `${newStatus === 'Disabled' ? 'Disabled' : 'Enabled'} user "${target.username}"`);
@@ -844,12 +1237,12 @@ export const dataService = {
         throw new Error(conn.message || 'Database not connected.');
       }
       const { error } = await supabase
-        .from('admin_users')
+        .from('users')
         .update({ password: passwordHash, plain_password: newPassword })
         .eq('username', cleanUser);
       if (error) throw new Error(error.message);
     } else {
-      const users = getLocal<AdminUser[]>(STORAGE_KEYS.USERS, []);
+      const users = getLocalUsers();
       const index = users.findIndex(u => u.username.toLowerCase() === cleanUser.toLowerCase());
       if (index !== -1) {
         users[index] = { ...users[index], password: passwordHash, plain_password: newPassword };
@@ -868,10 +1261,10 @@ export const dataService = {
     }
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('admin_users').delete().eq('id', id);
+      const { error } = await supabase.from('users').delete().eq('id', id);
       if (error) throw new Error(error.message);
     } else {
-      const users = getLocal<AdminUser[]>(STORAGE_KEYS.USERS, []);
+      const users = getLocalUsers();
       const updated = users.filter(u => u.id !== id);
       setLocal(STORAGE_KEYS.USERS, updated);
     }
@@ -921,48 +1314,151 @@ export const dataService = {
     };
   },
 
-  // AUTHENTICATION WITH SUPABASE & SEED VALIDATION
-  async loginAdmin(username: string, password: string): Promise<AdminUser> {
-    const cleanUser = username.trim();
-    if (!cleanUser || !password) {
-      throw new Error('Please fill in both username and password.');
+  // UNIFIED LOGIN — one identifier (username or School ID), routed by role.
+  async loginUser(identifier: string, password: string): Promise<User> {
+    const clean = identifier.trim();
+    if (!clean || !password) {
+      throw new Error('Please enter your username or School ID and password.');
     }
 
-    // Validate database connection first!
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
       throw new Error(conn.message || 'Database connection error. Please run supabase.txt SQL script in Supabase.');
     }
 
-    // Check database users
-    const users = await this.getAdminUsers();
-    const found = users.find(u => u.username.toLowerCase() === cleanUser.toLowerCase());
-    if (found && found.status === 'Active') {
-      const inputHash = await hashPassword(password);
-      if (found.password && found.password === inputHash) {
-        setLocal(STORAGE_KEYS.AUTH, found);
-        logActivity('Login successful', `Admin ${found.username} logged in`, found.username);
-        return found;
-      }
-    }
+    const users = await this.getUsers();
+    const lowered = clean.toLowerCase();
+    const found = users.find(u =>
+      (u.username && u.username.toLowerCase() === lowered) ||
+      (u.school_id && u.school_id.toLowerCase() === lowered)
+    );
+    if (!found) throw new Error('Invalid username / School ID or password.');
+    if (found.status !== 'Active') throw new Error('This account has been disabled. Please contact the library.');
 
-    throw new Error('Invalid username or password.');
+    const inputHash = await hashPassword(password);
+    const ok = (found.password && found.password === inputHash) ||
+      (!found.password && found.plain_password === password); // legacy plain-text rows
+    if (!ok) throw new Error('Invalid username / School ID or password.');
+
+    setLocal(STORAGE_KEYS.SESSION, found);
+    if (found.account_type === 'admin') {
+      logActivity('Login successful', `Admin ${found.username} logged in`, found.username);
+    } else {
+      logActivity('Student login', `Student ${found.full_name} (${found.school_id}) signed in`, found.full_name);
+    }
+    return found;
   },
 
-  getCurrentUser(): AdminUser | null {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.AUTH);
-      return data ? JSON.parse(data) : null;
-    } catch {
-      return null;
-    }
+  // AUTHENTICATION WITH SUPABASE & SEED VALIDATION
+  async loginAdmin(username: string, password: string): Promise<User> {
+    const user = await this.loginUser(username, password);
+    if (user.account_type !== 'admin') throw new Error('Invalid username or password.');
+    return user;
+  },
+
+  getCurrentUser(): User | null {
+    const session = readSession();
+    return session && session.account_type === 'admin' ? session : null;
   },
 
   logoutAdmin(): void {
     const user = this.getCurrentUser();
-    localStorage.removeItem(STORAGE_KEYS.AUTH);
+    clearSessions();
     if (user) {
       logActivity('Logout successful', `Admin ${user.username} logged out`, user.username);
     }
-  }
+  },
+
+  // STUDENT ACCOUNTS (school_id + password)
+
+  async signupStudent(data: { school_id: string; username: string; full_name: string; password: string }): Promise<User> {
+    const schoolId = data.school_id.trim();
+    const username = data.username.trim();
+    const fullName = data.full_name.trim();
+    if (!fullName) throw new Error('Full name is required.');
+    if (!isValidSchoolId(schoolId)) {
+      throw new Error(`School ID must look like ${new Date().getFullYear()}-1234.`);
+    }
+    if (!username || username.length < 3) {
+      throw new Error('Username must be at least 3 characters.');
+    }
+    if (/\s/.test(username)) {
+      throw new Error('Username cannot contain spaces.');
+    }
+    if (!data.password || data.password.length < 6) {
+      throw new Error('Password must be at least 6 characters.');
+    }
+
+    const newStudent: User = {
+      id: 'stu-' + Date.now(),
+      account_type: 'student',
+      username,
+      school_id: schoolId,
+      full_name: fullName,
+      role: 'Student',
+      status: 'Active',
+      created_at: new Date().toISOString(),
+      password: await hashPassword(data.password),
+      plain_password: data.password,
+    };
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: inserted, error } = await supabase.from('users').insert([{
+        account_type: newStudent.account_type,
+        username: newStudent.username,
+        school_id: newStudent.school_id,
+        full_name: newStudent.full_name,
+        role: newStudent.role,
+        status: newStudent.status,
+        created_at: newStudent.created_at,
+        password: newStudent.password,
+        plain_password: newStudent.plain_password,
+      }]).select().single();
+      if (!error && inserted) {
+        const session = normalizeUser(inserted);
+        setLocal(STORAGE_KEYS.SESSION, session);
+        logActivity('Student signup', `Student ${fullName} (${schoolId}) created an account`, fullName);
+        return session;
+      }
+      const msg = error?.message || '';
+      if (/duplicate|already exists/i.test(msg)) {
+        throw new Error('This School ID or username is already registered. Please sign in.');
+      }
+      // Table missing (fresh Supabase project without migration) -> fall back to local.
+      const missingTable = /users/i.test(msg) && /schema cache|Could not find the table|does not exist/i.test(msg);
+      if (!missingTable) throw new Error(error?.message || 'Failed to create account.');
+    }
+
+    const students = getLocalUsers();
+    if (students.some(s => s.school_id.toLowerCase() === schoolId.toLowerCase())) {
+      throw new Error('This School ID is already registered. Please sign in.');
+    }
+    if (students.some(s => s.username && s.username.toLowerCase() === username.toLowerCase())) {
+      throw new Error('This username is already taken.');
+    }
+    students.unshift(newStudent);
+    setLocal(STORAGE_KEYS.USERS, students);
+    setLocal(STORAGE_KEYS.SESSION, newStudent);
+    logActivity('Student signup', `Student ${fullName} (${schoolId}) created an account`, fullName);
+    return newStudent;
+  },
+
+  async loginStudent(schoolId: string, password: string): Promise<User> {
+    const user = await this.loginUser(schoolId, password);
+    if (user.account_type !== 'student') throw new Error('Invalid School ID or password.');
+    return user;
+  },
+
+  getCurrentStudent(): User | null {
+    const session = readSession();
+    return session && session.account_type === 'student' ? session : null;
+  },
+
+  logoutStudent(): void {
+    const student = this.getCurrentStudent();
+    clearSessions();
+    if (student) {
+      logActivity('Student logout', `Student ${student.full_name} (${student.school_id}) signed out`, student.full_name);
+    }
+  },
 };

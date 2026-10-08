@@ -26,6 +26,21 @@ export interface Book {
   available_copies: number;
   status: BookStatus;
   cover_url?: string;
+  author?: string;
+  published_date?: string | null;
+  tags?: string[];
+  created_at?: string;
+}
+
+export interface Author {
+  id: string;
+  name: string;
+  created_at?: string;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
   created_at?: string;
 }
 
@@ -56,6 +71,7 @@ export interface BorrowRecord {
   borrow_date: string;
   due_date: string;
   status: BorrowRecordStatus;
+  serial_number?: string;
   remaining_days?: number;
 }
 
@@ -67,13 +83,30 @@ export interface ReturnRecord {
   borrow_date: string;
   return_date: string;
   status: 'Returned';
+  serial_number?: string;
 }
 
-export interface AdminUser {
+export type BookCopyStatus = 'Available' | 'Borrowed';
+
+export interface BookCopy {
   id: string;
+  book_id: string;
+  serial_number: string;
+  status: BookCopyStatus;
+  created_at?: string;
+}
+
+export type AccountType = 'admin' | 'student';
+
+export interface User {
+  id: string;
+  account_type: AccountType;
+  /** Login name for admins; '' for students */
   username: string;
+  /** School ID for students (YYYY-XXXX); '' for admins */
+  school_id: string;
   full_name: string;
-  role: 'Admin' | 'Librarian';
+  role: 'Admin' | 'Librarian' | 'Student';
   status: UserStatus;
   created_at?: string;
   password?: string;

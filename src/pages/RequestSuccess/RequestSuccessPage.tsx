@@ -1,9 +1,11 @@
 import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { CheckCircle2, BookOpen, Clock, ArrowRight, Hash, User, GraduationCap } from 'lucide-react';
+import { CheckCircle2, BookOpen, Clock, ArrowRight, Hash, User, GraduationCap, BookMarked } from 'lucide-react';
+import { dataService } from '../../services/dataService';
 
 export const RequestSuccessPage: React.FC = () => {
   const location = useLocation();
+  const student = dataService.getCurrentStudent();
   const state = location.state as {
     inquiryNumber?: string;
     studentName?: string;
@@ -86,7 +88,16 @@ export const RequestSuccessPage: React.FC = () => {
         </div>
       )}
 
-      <div className="pt-4 flex items-center justify-center gap-3">
+      <div className="pt-4 flex items-center justify-center gap-3 flex-wrap">
+        {student && (
+          <Link
+            to="/student"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all"
+          >
+            <BookMarked className="w-4 h-4" />
+            <span>View My Borrowed Books</span>
+          </Link>
+        )}
         <Link
           to="/"
           className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-lg shadow-emerald-200 transition-all"

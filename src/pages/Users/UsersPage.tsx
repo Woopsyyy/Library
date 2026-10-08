@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
-import { AdminUser } from '../../types';
+import { User } from '../../types';
 import { toast } from 'sonner';
 import { UserPlus, Key, Edit2, Trash2, Power, X, Copy, CopyCheck } from 'lucide-react';
 
@@ -9,13 +9,13 @@ export const UsersPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Form states
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState<'Admin' | 'Librarian'>('Admin');
+  const [role, setRole] = useState<User['role']>('Admin');
   const [password, setPassword] = useState('');
 
   const { data: users = [], isLoading } = useQuery({
@@ -41,7 +41,7 @@ export const UsersPage: React.FC = () => {
   });
 
   const editMutation = useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<AdminUser> }) =>
+      mutationFn: ({ id, updates }: { id: string; updates: Partial<User> }) =>
       dataService.updateAdminUser(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
@@ -71,7 +71,7 @@ export const UsersPage: React.FC = () => {
     },
   });
 
-  const handleResetPassword = async (u: AdminUser) => {
+  const handleResetPassword = async (u: User) => {
     try {
       const newPassword = await dataService.resetAdminPassword(u.username);
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
@@ -81,7 +81,7 @@ export const UsersPage: React.FC = () => {
     }
   };
 
-  const handleCopyPassword = (u: AdminUser) => {
+  const handleCopyPassword = (u: User) => {
     if (!u.plain_password) return;
     navigator.clipboard.writeText(u.plain_password).then(() => {
       setCopiedId(u.id);
@@ -94,7 +94,8 @@ export const UsersPage: React.FC = () => {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate({ username, full_name: fullName, role, password });
+    // This form only creates staff accounts (Admin/Librarian options).
+    createMutation.mutate({ username, full_name: fullName, role: role === 'Student' ? 'Admin' : role, password });
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
@@ -106,7 +107,7 @@ export const UsersPage: React.FC = () => {
     });
   };
 
-  const openEditModal = (u: AdminUser) => {
+  const openEditModal = (u: User) => {
     setEditingUser(u);
     setFullName(u.full_name);
     setRole(u.role);

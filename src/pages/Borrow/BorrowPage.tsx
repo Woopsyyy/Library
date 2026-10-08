@@ -19,9 +19,10 @@ export const BorrowPage: React.FC = () => {
   const [selectedBookId, setSelectedBookId] = useState<string>(bookIdParam);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
-  // Student Form State
-  const [studentName, setStudentName] = useState('');
-  const [studentId, setStudentId] = useState('');
+  // Student Form State (prefilled when a student is signed in)
+  const currentStudent = dataService.getCurrentStudent();
+  const [studentName, setStudentName] = useState(currentStudent?.full_name || '');
+  const [studentId, setStudentId] = useState(currentStudent?.school_id || '');
   const [course, setCourse] = useState('BS Information Technology');
   const [yearLevel, setYearLevel] = useState('3rd Year');
   const [section, setSection] = useState('');

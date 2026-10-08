@@ -26,10 +26,13 @@ export const CatalogPage: React.FC = () => {
   });
 
   const filteredBooks = books.filter((book) => {
-    const matchesSearch = 
-      book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (book.type_name && book.type_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (book.series_name && book.series_name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const q = searchTerm.toLowerCase();
+    const matchesSearch =
+      book.title.toLowerCase().includes(q) ||
+      (book.type_name && book.type_name.toLowerCase().includes(q)) ||
+      (book.series_name && book.series_name.toLowerCase().includes(q)) ||
+      (book.author && book.author.toLowerCase().includes(q)) ||
+      (Array.isArray(book.tags) && book.tags.some((t) => t.toLowerCase().includes(q)));
 
     const matchesType = selectedType === 'all' || book.type_id === selectedType;
     const matchesSeries = selectedSeries === 'all' || book.series_id === selectedSeries;
@@ -73,7 +76,7 @@ export const CatalogPage: React.FC = () => {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by title, type, or series..."
+            placeholder="Search by title, type, series, author, or tag..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-11 pr-4 py-3 rounded-xl bg-white border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm transition-all shadow-xs"
@@ -169,6 +172,18 @@ export const CatalogPage: React.FC = () => {
                   <h3 className="text-base font-bold text-slate-900 line-clamp-2 leading-snug group-hover:text-emerald-700 transition-colors">
                     {book.title}
                   </h3>
+                  {book.author && (
+                    <p className="text-xs text-slate-500 font-medium -mt-2">by {book.author}</p>
+                  )}
+                  {Array.isArray(book.tags) && book.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {book.tags.slice(0, 4).map((t) => (
+                        <span key={t} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Inventory & Borrow Button */}

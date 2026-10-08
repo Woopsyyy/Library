@@ -6,23 +6,29 @@ import { Shield, KeyRound, User, Library, ArrowLeft } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!username.trim() || !password) {
-      toast.error('Please enter username and password.');
+    if (!identifier.trim() || !password) {
+      toast.error('Please enter your username or School ID and password.');
       return;
     }
 
     setLoading(true);
     try {
-      await dataService.loginAdmin(username, password);
-      toast.success('Login successful.');
-      navigate('/admin/dashboard');
+      // Single lookup in users — admins go to the admin page, students to theirs.
+      const user = await dataService.loginUser(identifier, password);
+      if (user.account_type === 'admin') {
+        toast.success('Login successful.');
+        navigate('/admin/dashboard');
+      } else {
+        toast.success('Welcome back!');
+        navigate('/student');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Invalid credentials.');
     } finally {
@@ -50,10 +56,10 @@ export const LoginPage: React.FC = () => {
             <Library className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-black tracking-tight text-slate-900">
-            Talisay Library Admin Portal
+            Talisay Library Login
           </h1>
           <p className="text-xs text-slate-600 font-medium">
-            Sign in to access dashboard, approve borrow requests, & manage inventory.
+            Sign in with your username or School ID (e.g. 2026-1234).
           </p>
         </div>
 
@@ -61,15 +67,15 @@ export const LoginPage: React.FC = () => {
         <div className="bg-white rounded-2xl p-6 sm:p-8 space-y-6 border border-slate-200 shadow-md">
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">Username</label>
+              <label className="text-xs font-semibold text-slate-700">Username or School ID</label>
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
                   required
-                  placeholder="Enter admin username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Username or School ID"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs"
                 />
               </div>
@@ -99,6 +105,13 @@ export const LoginPage: React.FC = () => {
               <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
             </button>
           </form>
+
+          <p className="text-center text-xs text-slate-600 font-medium">
+            Student without an account?{' '}
+            <Link to="/signup" className="font-bold text-emerald-700 hover:text-emerald-800">
+              Sign up
+            </Link>
+          </p>
         </div>
       </div>
     </div>

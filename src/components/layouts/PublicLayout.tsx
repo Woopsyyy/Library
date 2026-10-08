@@ -1,8 +1,20 @@
-import React from 'react';
-import { Link, Outlet } from 'react-router-dom';
-import { Shield, GraduationCap, Library } from 'lucide-react';
+import React, { useReducer } from 'react';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Shield, GraduationCap, Library, LogOut, LayoutDashboard, BookMarked } from 'lucide-react';
+import { dataService } from '../../services/dataService';
 
 export const PublicLayout: React.FC = () => {
+  const navigate = useNavigate();
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+  const student = dataService.getCurrentStudent();
+  const admin = dataService.getCurrentUser();
+
+  const handleSignOut = () => {
+    dataService.logoutStudent();
+    dataService.logoutAdmin();
+    forceUpdate();
+    navigate('/');
+  };
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-500 selection:text-white">
       {/* Header */}
@@ -37,13 +49,51 @@ export const PublicLayout: React.FC = () => {
             >
               Book Catalog
             </Link>
-            <Link
-              to="/login"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition-all"
-            >
-              <Shield className="w-4 h-4 text-emerald-400" />
-              <span>Admin Login</span>
-            </Link>
+            {student ? (
+              <>
+                <Link
+                  to="/student"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all"
+                >
+                  <BookMarked className="w-4 h-4" />
+                  <span className="hidden sm:inline">My Library</span>
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  title={`Sign out ${student.full_name}`}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">Sign Out</span>
+                </button>
+              </>
+            ) : admin ? (
+              <>
+                <Link
+                  to="/admin/dashboard"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  <span className="hidden sm:inline">Dashboard</span>
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  title={`Sign out ${admin.full_name}`}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">Sign Out</span>
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition-all"
+              >
+                <Shield className="w-4 h-4 text-emerald-400" />
+                <span>Login</span>
+              </Link>
+            )}
           </nav>
         </div>
       </header>

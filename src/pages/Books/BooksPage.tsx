@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
-import { Book, BookStatus } from '../../types';
+import { Book, BookStatus, Tag as TagType } from '../../types';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Search, BookOpen, X, UploadCloud } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, BookOpen, X, UploadCloud, Tag, ChevronDown, ChevronRight } from 'lucide-react';
 
 const BookCoverDropzone: React.FC<{
   preview: string;
@@ -87,6 +87,94 @@ const BookCoverDropzone: React.FC<{
   );
 };
 
+const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, colSpan }) => {
+  const { data: copies = [], isLoading } = useQuery({
+    queryKey: ['copies', bookId],
+    queryFn: () => dataService.getBookCopies(bookId),
+  });
+  return (
+    <tr className="bg-slate-50/70">
+      <td colSpan={colSpan} className="px-4 py-3">
+        {isLoading ? (
+          <p className="text-[11px] text-slate-400 font-medium pl-8">Loading serials...</p>
+        ) : copies.length === 0 ? (
+          <p className="text-[11px] text-slate-400 font-medium pl-8">No copy serials yet.</p>
+        ) : (
+          <div className="pl-8 space-y-1.5">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Copy serials ({copies.length})
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {copies.map((c) => (
+                <span
+                  key={c.id}
+                  title={c.status}
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold border ${
+                    c.status === 'Borrowed'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  }`}
+                >
+                  {c.serial_number}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+};
+
+const TagPicker: React.FC<{
+  allTags: TagType[];
+  selected: string[];
+  onToggle: (name: string) => void;
+  onRemove: (name: string) => void;
+}> = ({ allTags, selected, onToggle, onRemove }) => {
+  const lowered = new Set(selected.map((t) => t.toLowerCase()));
+  return (
+    <div className="space-y-2">
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onRemove(name)}
+              title="Remove tag"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+            >
+              <span>{name}</span>
+              <X className="w-3 h-3" />
+            </button>
+          ))}
+        </div>
+      )}
+      {allTags.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {allTags
+            .filter((t) => !lowered.has(t.name.toLowerCase()))
+            .map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => onToggle(t.name)}
+                className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200 hover:border-violet-300 hover:text-violet-700 transition-colors"
+              >
+                {t.name}
+              </button>
+            ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-slate-400 font-medium">
+          No tags in the database yet. Add tags first in Admin → Config.
+        </p>
+      )}
+    </div>
+  );
+};
+
 export const BooksPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -96,13 +184,16 @@ export const BooksPage: React.FC = () => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
+  const [expandedBookId, setExpandedBookId] = useState<string | null>(null);
 
   // Form states
   const [title, setTitle] = useState('');
   const [typeId, setTypeId] = useState('');
-  const [seriesId, setSeriesId] = useState('');
+  const [seriesName, setSeriesName] = useState('');
+  const [author, setAuthor] = useState('');
+  const [publishedDate, setPublishedDate] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [totalCopies, setTotalCopies] = useState<number>(1);
-  const [availableCopies, setAvailableCopies] = useState<number>(1);
   const [status, setStatus] = useState<BookStatus>('Available');
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState('');
@@ -123,6 +214,33 @@ export const BooksPage: React.FC = () => {
     queryFn: () => dataService.getBookSeries(),
   });
 
+  const { data: authors = [] } = useQuery({
+    queryKey: ['authors'],
+    queryFn: () => dataService.getAuthors(),
+  });
+
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: () => dataService.getTags(),
+  });
+
+  const toggleTag = (name: string) => {
+    setSelectedTags((prev) =>
+      prev.some((t) => t.toLowerCase() === name.toLowerCase()) ? prev : [...prev, name]
+    );
+  };
+
+  const removeTag = (name: string) => {
+    setSelectedTags((prev) => prev.filter((t) => t.toLowerCase() !== name.toLowerCase()));
+  };
+
+  const resetMetaFields = () => {
+    setSeriesName('');
+    setAuthor('');
+    setPublishedDate('');
+    setSelectedTags([]);
+  };
+
   useEffect(() => {
     if (actionParam === 'add') {
       openAddModal();
@@ -134,7 +252,7 @@ export const BooksPage: React.FC = () => {
   const openAddModal = () => {
     setTitle('');
     if (bookTypes.length > 0) setTypeId(bookTypes[0].id);
-    if (bookSeries.length > 0) setSeriesId(bookSeries[0].id);
+    resetMetaFields();
     setTotalCopies(1);
     setCoverFile(null);
     setCoverPreview('');
@@ -145,19 +263,22 @@ export const BooksPage: React.FC = () => {
     setEditingBook(book);
     setTitle(book.title);
     setTypeId(book.type_id);
-    setSeriesId(book.series_id);
+    setSeriesName(book.series_name || '');
+    setAuthor(book.author || '');
+    setPublishedDate(book.published_date || '');
+    setSelectedTags(Array.isArray(book.tags) ? [...book.tags] : []);
     setTotalCopies(book.total_copies);
-    setAvailableCopies(book.available_copies);
     setStatus(book.status);
     setCoverFile(null);
     setCoverPreview(book.cover_url || '');
   };
 
   const addMutation = useMutation({
-    mutationFn: (data: { title: string; type_id: string; series_id: string; total_copies: number; cover_file?: File | null }) =>
+    mutationFn: (data: { title: string; type_id: string; series_name: string; total_copies: number; author: string; published_date: string; tags: string[]; cover_file?: File | null }) =>
       dataService.addBook(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['copies'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       toast.success('Book added.');
       setIsAddOpen(false);
@@ -174,6 +295,7 @@ export const BooksPage: React.FC = () => {
       dataService.updateBook(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['copies'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       toast.success('Book updated.');
       setEditingBook(null);
@@ -189,6 +311,7 @@ export const BooksPage: React.FC = () => {
     mutationFn: (id: string) => dataService.deleteBook(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['copies'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       toast.success('Book deleted.');
       setDeletingBookId(null);
@@ -204,11 +327,18 @@ export const BooksPage: React.FC = () => {
       toast.error('Title is required.');
       return;
     }
+    if (!seriesName.trim()) {
+      toast.error('Series is required. Type a series name.');
+      return;
+    }
     addMutation.mutate({
       title,
       type_id: typeId || (bookTypes[0]?.id || ''),
-      series_id: seriesId || (bookSeries[0]?.id || ''),
+      series_name: seriesName,
       total_copies: Number(totalCopies),
+      author,
+      published_date: publishedDate,
+      tags: selectedTags,
       cover_file: coverFile,
     });
   };
@@ -216,26 +346,36 @@ export const BooksPage: React.FC = () => {
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingBook) return;
+    if (!seriesName.trim()) {
+      toast.error('Series is required. Type a series name.');
+      return;
+    }
     editMutation.mutate({
       id: editingBook.id,
       updates: {
         title,
         type_id: typeId,
-        series_id: seriesId,
+        series_name: seriesName,
         total_copies: Number(totalCopies),
-        available_copies: Number(availableCopies),
         status,
+        author,
+        published_date: publishedDate,
+        tags: selectedTags,
         cover_file: coverFile,
       },
     });
   };
 
-  const filteredBooks = books.filter(
-    (b) =>
-      b.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (b.type_name && b.type_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (b.series_name && b.series_name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredBooks = books.filter((b) => {
+    const q = searchTerm.toLowerCase();
+    return (
+      b.title.toLowerCase().includes(q) ||
+      (b.type_name && b.type_name.toLowerCase().includes(q)) ||
+      (b.series_name && b.series_name.toLowerCase().includes(q)) ||
+      (b.author && b.author.toLowerCase().includes(q)) ||
+      (Array.isArray(b.tags) && b.tags.some((t) => t.toLowerCase().includes(q)))
+    );
+  });
 
   return (
     <div className="space-y-6">
@@ -260,7 +400,7 @@ export const BooksPage: React.FC = () => {
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
-          placeholder="Search by title, type, or series..."
+          placeholder="Search by title, type, series, author, or tag..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
@@ -273,10 +413,13 @@ export const BooksPage: React.FC = () => {
           <table className="w-full text-left text-xs text-slate-700">
             <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
               <tr>
+                <th className="px-2 py-3 w-8"></th>
                 <th className="px-4 py-3">Cover</th>
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Series</th>
+                <th className="px-4 py-3">Author</th>
+                <th className="px-4 py-3">Tags</th>
                 <th className="px-4 py-3 text-center">Total Copies</th>
                 <th className="px-4 py-3 text-center">Available Copies</th>
                 <th className="px-4 py-3 text-center">Status</th>
@@ -286,19 +429,33 @@ export const BooksPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100 font-medium">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-slate-400">
+                  <td colSpan={11} className="text-center py-8 text-slate-400">
                     Loading books from database...
                   </td>
                 </tr>
               ) : filteredBooks.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-slate-400">
+                  <td colSpan={11} className="text-center py-8 text-slate-400">
                     No books found in catalog. Click "Add Book" to add one to Supabase database.
                   </td>
                 </tr>
               ) : (
                 filteredBooks.map((book) => (
-                  <tr key={book.id} className="hover:bg-slate-50 transition-colors">
+                  <React.Fragment key={book.id}>
+                  <tr className="hover:bg-slate-50 transition-colors">
+                    <td className="px-2 py-3">
+                      <button
+                        onClick={() => setExpandedBookId((prev) => (prev === book.id ? null : book.id))}
+                        className="p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                        title={expandedBookId === book.id ? 'Hide serials' : 'Show copy serials'}
+                      >
+                        {expandedBookId === book.id ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
+                      </button>
+                    </td>
                     <td className="px-4 py-3">
                       {book.cover_url ? (
                         <img
@@ -322,6 +479,22 @@ export const BooksPage: React.FC = () => {
                       <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                         {book.series_name}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-800 max-w-[10rem] truncate" title={book.author || ''}>
+                      {book.author || <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 max-w-[12rem]">
+                      {Array.isArray(book.tags) && book.tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {book.tags.map((t) => (
+                            <span key={t} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200 whitespace-nowrap">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center font-bold text-slate-900">{book.total_copies}</td>
                     <td className="px-4 py-3 text-center font-bold text-emerald-700">
@@ -357,6 +530,8 @@ export const BooksPage: React.FC = () => {
                       </div>
                     </td>
                   </tr>
+                  {expandedBookId === book.id && <BookCopiesRow bookId={book.id} colSpan={11} />}
+                  </React.Fragment>
                 ))
               )}
             </tbody>
@@ -367,7 +542,7 @@ export const BooksPage: React.FC = () => {
       {/* Add Book Modal */}
       {isAddOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 border border-slate-200 shadow-xl">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 border border-slate-200 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-base font-bold text-slate-900">Add New Book</h3>
               <button onClick={() => setIsAddOpen(false)} className="text-slate-400 hover:text-slate-700">
@@ -420,19 +595,66 @@ export const BooksPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Series *</label>
-                  <select
-                    value={seriesId}
-                    onChange={(e) => setSeriesId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-800 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
-                  >
-                    {bookSeries.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="text-xs font-semibold text-slate-700">Author</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="author-suggestions"
+                      placeholder="Type or pick author"
+                      value={author}
+                      onChange={(e) => setAuthor(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                    />
+                    <datalist id="author-suggestions">
+                      {authors.map((a) => (
+                        <option key={a.id} value={a.name} />
+                      ))}
+                    </datalist>
+                  </div>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Series *</label>
+                  <input
+                    type="text"
+                    list="series-suggestions"
+                    required
+                    placeholder="Type series name"
+                    value={seriesName}
+                    onChange={(e) => setSeriesName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                  <datalist id="series-suggestions">
+                    {bookSeries.map((s) => (
+                      <option key={s.id} value={s.name} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Date Published</label>
+                  <input
+                    type="date"
+                    value={publishedDate}
+                    onChange={(e) => setPublishedDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-violet-600" />
+                  <span>Tags (multiple allowed)</span>
+                </label>
+                <TagPicker
+                  allTags={allTags}
+                  selected={selectedTags}
+                  onToggle={toggleTag}
+                  onRemove={removeTag}
+                />
               </div>
 
               <div className="space-y-1">
@@ -470,7 +692,7 @@ export const BooksPage: React.FC = () => {
       {/* Edit Book Modal */}
       {editingBook && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 border border-slate-200 shadow-xl">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 border border-slate-200 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-base font-bold text-slate-900">Edit Book</h3>
               <button onClick={() => setEditingBook(null)} className="text-slate-400 hover:text-slate-700">
@@ -522,19 +744,54 @@ export const BooksPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Series</label>
-                  <select
-                    value={seriesId}
-                    onChange={(e) => setSeriesId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-800 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
-                  >
-                    {bookSeries.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="text-xs font-semibold text-slate-700">Author</label>
+                  <input
+                    type="text"
+                    list="author-suggestions"
+                    placeholder="Type or pick author"
+                    value={author}
+                    onChange={(e) => setAuthor(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Series</label>
+                  <input
+                    type="text"
+                    list="series-suggestions"
+                    required
+                    placeholder="Type series name"
+                    value={seriesName}
+                    onChange={(e) => setSeriesName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Date Published</label>
+                  <input
+                    type="date"
+                    value={publishedDate}
+                    onChange={(e) => setPublishedDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-violet-600" />
+                  <span>Tags (multiple allowed)</span>
+                </label>
+                <TagPicker
+                  allTags={allTags}
+                  selected={selectedTags}
+                  onToggle={toggleTag}
+                  onRemove={removeTag}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -551,14 +808,9 @@ export const BooksPage: React.FC = () => {
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700">Available Copies</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={totalCopies}
-                    value={availableCopies}
-                    onChange={(e) => setAvailableCopies(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
-                  />
+                  <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500 font-medium">
+                    Auto-managed from copy serials — change Total Copies to add or remove serials.
+                  </div>
                 </div>
               </div>
 

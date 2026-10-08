@@ -14,8 +14,11 @@ import { CatalogPage } from './pages/Catalog/CatalogPage';
 import { BorrowPage } from './pages/Borrow/BorrowPage';
 import { RequestSuccessPage } from './pages/RequestSuccess/RequestSuccessPage';
 
-// Admin Pages
+// Auth Pages
 import { LoginPage } from './pages/Login/LoginPage';
+import { SignupPage } from './pages/Signup/SignupPage';
+import { StudentPage } from './pages/Student/StudentPage';
+import { ProtectedStudentRoute } from './components/ProtectedStudentRoute';
 import { DashboardPage } from './pages/Dashboard/DashboardPage';
 import { BooksPage } from './pages/Books/BooksPage';
 import { BorrowRequestsPage } from './pages/BorrowRequests/BorrowRequestsPage';
@@ -47,8 +50,17 @@ export const App: React.FC = () => {
             <Route path="/request-success" element={<RequestSuccessPage />} />
           </Route>
 
-          {/* Admin Login */}
+          {/* Single login for admins + students */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/signin" element={<Navigate to="/login" replace />} />
+
+          {/* Student signup */}
+          <Route path="/signup" element={<SignupPage />} />
+
+          {/* Protected Student Routes */}
+          <Route element={<ProtectedStudentRoute />}>
+            <Route path="/student" element={<StudentPage />} />
+          </Route>
 
           {/* Protected Admin Routes */}
           <Route element={<ProtectedRoute />}>

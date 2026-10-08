@@ -18,6 +18,7 @@ export const BorrowRequestsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['borrowRequests'] });
       queryClient.invalidateQueries({ queryKey: ['borrowedBooks'] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['copies'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       toast.success('Borrow approved.');
     },
