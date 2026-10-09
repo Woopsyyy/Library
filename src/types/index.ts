@@ -56,6 +56,7 @@ export interface BorrowRequest {
   book_title?: string;
   book_type?: string;
   book_series?: string;
+  serial_number?: string;
   duration_days: number;
   request_date: string;
   status: RequestStatus;
@@ -103,11 +104,14 @@ export interface User {
   account_type: AccountType;
   /** Login name for admins; '' for students */
   username: string;
-  /** School ID for students (YYYY-XXXX); '' for admins */
+  /** School ID for students (XXXX-XXXX); '' for admins */
   school_id: string;
   full_name: string;
   role: 'Admin' | 'Librarian' | 'Student';
   status: UserStatus;
+  course?: string;
+  year_level?: string;
+  section?: string;
   created_at?: string;
   password?: string;
   plain_password?: string;

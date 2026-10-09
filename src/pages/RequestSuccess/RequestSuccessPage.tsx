@@ -14,6 +14,7 @@ export const RequestSuccessPage: React.FC = () => {
     yearLevel?: string;
     section?: string;
     bookTitle?: string;
+    serialNumber?: string;
     durationDays?: number;
   } | null;
 
@@ -72,6 +73,16 @@ export const RequestSuccessPage: React.FC = () => {
               {state.bookTitle}
             </span>
           </div>
+          {state.serialNumber && (
+            <div className="flex justify-between border-b border-slate-100 pb-2 items-center">
+              <span className="text-slate-500 flex items-center gap-1">
+                <Hash className="w-3.5 h-3.5 text-emerald-600" /> Book Serial Number:
+              </span>
+              <span className="font-mono font-bold text-xs text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
+                {state.serialNumber}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between border-b border-slate-100 pb-2">
             <span className="text-slate-500">Borrow Duration:</span>
             <span className="font-bold text-slate-700 flex items-center gap-1">

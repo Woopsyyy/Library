@@ -256,8 +256,9 @@ export const StudentPage: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-slate-900 truncate">{b.book_title || 'Book'}</p>
                       {b.serial_number && (
-                        <p className="text-[11px] text-slate-500 font-mono font-bold mt-0.5">
-                          Serial: {b.serial_number}
+                        <p className="text-[11px] text-emerald-800 font-mono font-bold mt-1 inline-flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          <span>Serial:</span>
+                          <span>{b.serial_number}</span>
                         </p>
                       )}
                       <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5 mt-1">
@@ -302,7 +303,14 @@ export const StudentPage: React.FC = () => {
                     <p className="font-bold text-slate-900 text-sm truncate">
                       {r.book_title || 'Book'}
                     </p>
-                    <p className="text-[11px] text-slate-500 font-mono">{r.inquiry_number}</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                      <p className="text-[11px] text-slate-500 font-mono">{r.inquiry_number}</p>
+                      {r.serial_number && (
+                        <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          Serial: {r.serial_number}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
                     Pending approval

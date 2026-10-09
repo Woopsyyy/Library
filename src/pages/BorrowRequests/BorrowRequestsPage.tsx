@@ -55,6 +55,7 @@ export const BorrowRequestsPage: React.FC = () => {
                 <th className="px-4 py-3">Student ID</th>
                 <th className="px-4 py-3">Course / Year / Sec</th>
                 <th className="px-4 py-3">Requested Book</th>
+                <th className="px-4 py-3">Serial</th>
                 <th className="px-4 py-3 text-center">Duration</th>
                 <th className="px-4 py-3">Request Date</th>
                 <th className="px-4 py-3 text-center">Status</th>
@@ -64,13 +65,13 @@ export const BorrowRequestsPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-slate-400">
+                  <td colSpan={9} className="text-center py-8 text-slate-400">
                     Loading requests...
                   </td>
                 </tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-slate-400">
+                  <td colSpan={9} className="text-center py-8 text-slate-400">
                     No borrow requests found.
                   </td>
                 </tr>
@@ -86,6 +87,15 @@ export const BorrowRequestsPage: React.FC = () => {
                       {req.course} ({req.year_level} - {req.section})
                     </td>
                     <td className="px-4 py-3 font-semibold text-emerald-600">{req.book_title}</td>
+                    <td className="px-4 py-3 font-mono text-[11px] font-bold text-slate-700">
+                      {req.serial_number ? (
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md">
+                          {req.serial_number}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">Auto-assign</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-center font-semibold text-slate-700">
                       {req.duration_days} Days
                     </td>

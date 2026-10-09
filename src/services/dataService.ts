@@ -24,18 +24,10 @@ const STORAGE_KEYS = {
   LEGACY_STUDENTS: 'talisay_student_users',
 };
 
-// School ID format: <current year>-<random four digits>, e.g. 2026-4821
-export function generateSchoolId(): string {
-  const year = new Date().getFullYear();
-  const digits = String(Math.floor(1000 + Math.random() * 9000));
-  return `${year}-${digits}`;
-}
-
+// School ID format: <four digits>-<four digits>, e.g. 1234-5678 (typed manually by the student)
 export function isValidSchoolId(schoolId: string): boolean {
   const clean = schoolId.trim();
-  if (!/^\d{4}-\d{4}$/.test(clean)) return false;
-  const year = new Date().getFullYear();
-  return clean.startsWith(`${year}-`);
+  return /^\d{4}-\d{4}$/.test(clean);
 }
 
 // Helper to get / set LocalStorage
@@ -507,9 +499,24 @@ export const dataService = {
   },
 
   // ---- Per-copy serial numbers (TLB-<book>-001, ...) ----
-  makeSerial(bookId: string, n: number): string {
-    const key = bookId.replace(/-/g, '').slice(0, 8).toUpperCase().padEnd(8, 'X');
-    return `TLB-${key}-${String(n).padStart(3, '0')}`;
+  makeSerial(bookId: string, n: number, existingSerials?: Set<string>): string {
+    let key = '';
+    if (bookId.startsWith('book-')) {
+      const digits = bookId.replace(/\D/g, '');
+      const tail = digits.length >= 6 ? digits.slice(-6) : digits.padStart(6, '0');
+      key = `BK${tail}`.padEnd(8, '0');
+    } else {
+      key = bookId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase().padEnd(8, 'X');
+    }
+    let candidate = `TLB-${key}-${String(n).padStart(3, '0')}`;
+    if (existingSerials && existingSerials.has(candidate)) {
+      let bump = n + 1;
+      while (existingSerials.has(`TLB-${key}-${String(bump).padStart(3, '0')}`)) {
+        bump++;
+      }
+      candidate = `TLB-${key}-${String(bump).padStart(3, '0')}`;
+    }
+    return candidate;
   },
 
   nextCopyNumber(copies: BookCopy[]): number {
@@ -521,7 +528,7 @@ export const dataService = {
     return max + 1;
   },
 
-  async getBookCopies(bookId: string): Promise<BookCopy[]> {
+  async getRawBookCopies(bookId: string): Promise<BookCopy[]> {
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from('book_copies')
@@ -531,6 +538,24 @@ export const dataService = {
       if (!error && data) return data;
     }
     return getLocal<BookCopy[]>(STORAGE_KEYS.COPIES, []).filter(c => c.book_id === bookId);
+  },
+
+  async getBookCopies(bookId: string): Promise<BookCopy[]> {
+    const raw = await this.getRawBookCopies(bookId);
+    if (raw.length > 0) return raw;
+
+    // Auto-heal: If book exists and has total_copies > 0, generate copies automatically
+    try {
+      const books = await this.getBooks();
+      const book = books.find(b => b.id === bookId);
+      if (book && (book.total_copies || 0) > 0) {
+        await this.reconcileCopies(bookId, book.total_copies);
+        return await this.getRawBookCopies(bookId);
+      }
+    } catch {
+      // Fall through if lookup fails
+    }
+    return raw;
   },
 
   async setCopyStatus(copyId: string, status: 'Available' | 'Borrowed'): Promise<void> {
@@ -548,7 +573,7 @@ export const dataService = {
   // Grow/shrink the copy list to match `total`. Never removes borrowed copies —
   // throws when total is set below the borrowed count.
   async reconcileCopies(bookId: string, total: number): Promise<{ total: number; available: number }> {
-    const copies = await this.getBookCopies(bookId);
+    const copies = await this.getRawBookCopies(bookId);
     const borrowed = copies.filter(c => c.status === 'Borrowed').length;
     if (total < borrowed) {
       throw new Error(`Cannot set total below ${borrowed} (copies are currently borrowed).`);
@@ -556,9 +581,14 @@ export const dataService = {
     let next = this.nextCopyNumber(copies);
 
     if (copies.length < total) {
+      const allLocal = getLocal<BookCopy[]>(STORAGE_KEYS.COPIES, []);
+      const existingSerials = new Set(allLocal.map(c => c.serial_number));
+
       const toAdd: Partial<BookCopy>[] = [];
       for (let i = copies.length; i < total; i++, next++) {
-        toAdd.push({ book_id: bookId, serial_number: this.makeSerial(bookId, next), status: 'Available' });
+        const serial = this.makeSerial(bookId, next, existingSerials);
+        existingSerials.add(serial);
+        toAdd.push({ book_id: bookId, serial_number: serial, status: 'Available' });
       }
       if (isSupabaseConfigured && supabase) {
         const { error } = await supabase.from('book_copies').insert(toAdd);
@@ -583,8 +613,21 @@ export const dataService = {
       }
     }
 
-    const fresh = await this.getBookCopies(bookId);
+    const fresh = await this.getRawBookCopies(bookId);
     return { total: fresh.length, available: fresh.filter(c => c.status === 'Available').length };
+  },
+
+  // Quickly add 1 more copy with an auto-generated serial number
+  async addBookCopy(bookId: string): Promise<BookCopy> {
+    const books = await this.getBooks();
+    const book = books.find(b => b.id === bookId);
+    if (!book) throw new Error('Book not found.');
+    const updatedTotal = (book.total_copies || 0) + 1;
+    await this.updateBook(bookId, { total_copies: updatedTotal });
+    const copies = await this.getBookCopies(bookId);
+    const newest = copies[copies.length - 1];
+    logActivity('Book copy added', `Added copy to "${book.title}" (Serial: ${newest?.serial_number || 'Auto-generated'})`);
+    return newest;
   },
 
   // BOOKS
@@ -828,6 +871,7 @@ export const dataService = {
     year_level: string;
     section: string;
     book_id: string;
+    serial_number?: string;
     duration_days: number;
   }): Promise<BorrowRequest> {
     // Validate database connection first!
@@ -872,6 +916,7 @@ export const dataService = {
       book_title: targetBook.title,
       book_type: targetBook.type_name,
       book_series: targetBook.series_name,
+      serial_number: data.serial_number?.trim() || undefined,
       duration_days: Number(data.duration_days),
       request_date: new Date().toISOString(),
       status: 'Pending',
@@ -886,19 +931,20 @@ export const dataService = {
         year_level: newReq.year_level,
         section: newReq.section,
         book_id: newReq.book_id,
+        serial_number: newReq.serial_number,
         duration_days: newReq.duration_days,
         request_date: newReq.request_date,
         status: newReq.status,
       };
       const { data: inserted, error } = await supabase.from('borrow_requests').insert([reqForDb]).select().single();
       if (error) throw new Error(`Supabase Error: ${error.message}`);
-      logActivity('Borrow Request Submitted', `Student ${data.student_name} requested "${targetBook.title}"`);
+      logActivity('Borrow Request Submitted', `Student ${data.student_name} requested "${targetBook.title}" (Serial: ${newReq.serial_number || 'Auto-assign'})`);
       return inserted;
     }
 
     requests.unshift(newReq);
     setLocal(STORAGE_KEYS.REQUESTS, requests);
-    logActivity('Borrow Request Submitted', `Student ${data.student_name} requested "${targetBook.title}"`);
+    logActivity('Borrow Request Submitted', `Student ${data.student_name} requested "${targetBook.title}" (Serial: ${newReq.serial_number || 'Auto-assign'})`);
     return newReq;
   },
 
@@ -916,15 +962,23 @@ export const dataService = {
     const books = await this.getBooks();
     const targetBook = books.find(b => b.id === req.book_id);
 
-    // Assign one specific physical copy by serial number.
-    const availableCopies = (await this.getBookCopies(req.book_id))
-      .filter(c => c.status === 'Available')
-      .sort((a, b) => a.serial_number.localeCompare(b.serial_number));
-    if (availableCopies.length === 0) {
-      throw new Error('No available copies — every serial of this book is currently lent out.');
+    // Assign specific physical copy by serial number if requested, or first available copy
+    const allCopies = await this.getBookCopies(req.book_id);
+    let assigned = req.serial_number
+      ? allCopies.find(c => c.serial_number === req.serial_number && c.status === 'Available')
+      : undefined;
+
+    if (!assigned) {
+      const availableCopies = allCopies
+        .filter(c => c.status === 'Available')
+        .sort((a, b) => a.serial_number.localeCompare(b.serial_number));
+      if (availableCopies.length === 0) {
+        throw new Error('No available copies — every serial of this book is currently lent out.');
+      }
+      assigned = availableCopies[0];
     }
-    const assigned = availableCopies[0];
-    const newAvailableCopies = availableCopies.length - 1;
+    const availableLeft = allCopies.filter(c => c.status === 'Available' && c.id !== assigned!.id).length;
+    const newAvailableCopies = availableLeft;
     const newBookStatus = newAvailableCopies === 0 ? 'Borrowed' : (targetBook?.status || 'Available');
 
     const borrowDate = new Date();
@@ -1371,13 +1425,13 @@ export const dataService = {
 
   // STUDENT ACCOUNTS (school_id + password)
 
-  async signupStudent(data: { school_id: string; username: string; full_name: string; password: string }): Promise<User> {
+  async signupStudent(data: { school_id: string; username: string; full_name: string; password: string; course: string; year_level: string; section: string }): Promise<User> {
     const schoolId = data.school_id.trim();
     const username = data.username.trim();
     const fullName = data.full_name.trim();
     if (!fullName) throw new Error('Full name is required.');
     if (!isValidSchoolId(schoolId)) {
-      throw new Error(`School ID must look like ${new Date().getFullYear()}-1234.`);
+      throw new Error('School ID must look like 1234-5678.');
     }
     if (!username || username.length < 3) {
       throw new Error('Username must be at least 3 characters.');
@@ -1397,6 +1451,9 @@ export const dataService = {
       full_name: fullName,
       role: 'Student',
       status: 'Active',
+      course: data.course.trim(),
+      year_level: data.year_level,
+      section: data.section.trim(),
       created_at: new Date().toISOString(),
       password: await hashPassword(data.password),
       plain_password: data.password,
@@ -1410,6 +1467,9 @@ export const dataService = {
         full_name: newStudent.full_name,
         role: newStudent.role,
         status: newStudent.status,
+        course: newStudent.course,
+        year_level: newStudent.year_level,
+        section: newStudent.section,
         created_at: newStudent.created_at,
         password: newStudent.password,
         plain_password: newStudent.plain_password,

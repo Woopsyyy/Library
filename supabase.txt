@@ -34,6 +34,20 @@ CREATE TABLE IF NOT EXISTS public.books (
 -- Add cover_url column to existing books tables (safe to re-run)
 ALTER TABLE public.books ADD COLUMN IF NOT EXISTS cover_url VARCHAR(500);
 
+-- 3b. BOOK COPIES TABLE (Each physical copy has an auto-generated unique serial number)
+CREATE TABLE IF NOT EXISTS public.book_copies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
+    serial_number VARCHAR(100) NOT NULL UNIQUE,
+    status VARCHAR(50) NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Borrowed')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Safe migrations for serial numbers across requests, records, and returns
+ALTER TABLE public.borrow_requests ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100);
+ALTER TABLE public.borrow_records ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100);
+ALTER TABLE public.returns ADD COLUMN IF NOT EXISTS serial_number VARCHAR(100);
+
 -- 4. BORROW REQUESTS TABLE
 CREATE TABLE IF NOT EXISTS public.borrow_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -156,6 +170,10 @@ CREATE POLICY "Allow all access to book_series" ON public.book_series FOR ALL US
 
 DROP POLICY IF EXISTS "Allow all access to books" ON public.books;
 CREATE POLICY "Allow all access to books" ON public.books FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.book_copies ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to book_copies" ON public.book_copies;
+CREATE POLICY "Allow all access to book_copies" ON public.book_copies FOR ALL USING (true) WITH CHECK (true);
 
 -- SEED INITIAL DATA
 INSERT INTO public.book_types (name) VALUES

@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link, Navigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
 import { Book } from '../../types';
 import { toast } from 'sonner';
-import { BookOpen, UserCheck, Calendar, ArrowLeft, Send } from 'lucide-react';
+import { BookOpen, Calendar, ArrowLeft, Send, User, Hash } from 'lucide-react';
 
 export const BorrowPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const bookIdParam = searchParams.get('bookId') || '';
 
   const { data: books = [] } = useQuery({
@@ -18,16 +19,20 @@ export const BorrowPage: React.FC = () => {
 
   const [selectedBookId, setSelectedBookId] = useState<string>(bookIdParam);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-
-  // Student Form State (prefilled when a student is signed in)
-  const currentStudent = dataService.getCurrentStudent();
-  const [studentName, setStudentName] = useState(currentStudent?.full_name || '');
-  const [studentId, setStudentId] = useState(currentStudent?.school_id || '');
-  const [course, setCourse] = useState('BS Information Technology');
-  const [yearLevel, setYearLevel] = useState('3rd Year');
-  const [section, setSection] = useState('');
   const [durationDays, setDurationDays] = useState<number>(3);
+  const [selectedSerial, setSelectedSerial] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Get student from session — guaranteed to exist (guard below handles null).
+  const currentStudent = dataService.getCurrentStudent();
+
+  const { data: bookCopies = [], isLoading: loadingCopies } = useQuery({
+    queryKey: ['copies', selectedBookId],
+    queryFn: () => (selectedBookId ? dataService.getBookCopies(selectedBookId) : Promise.resolve([])),
+    enabled: Boolean(selectedBookId),
+  });
+
+  const availableCopies = bookCopies.filter((c) => c.status === 'Available');
 
   useEffect(() => {
     if (bookIdParam && books.length > 0) {
@@ -42,17 +47,30 @@ export const BorrowPage: React.FC = () => {
     }
   }, [bookIdParam, books]);
 
+  useEffect(() => {
+    if (availableCopies.length > 0) {
+      if (!selectedSerial || !availableCopies.some((c) => c.serial_number === selectedSerial)) {
+        setSelectedSerial(availableCopies[0].serial_number);
+      }
+    } else {
+      setSelectedSerial('');
+    }
+  }, [bookCopies, selectedBookId]);
+
   const handleBookChange = (id: string) => {
     setSelectedBookId(id);
     const found = books.find((b) => b.id === id);
     setSelectedBook(found || null);
+    setSelectedSerial('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!studentName.trim() || !studentId.trim() || !course.trim() || !yearLevel.trim() || !section.trim()) {
-      toast.error('Please complete all required fields.');
+    const student = dataService.getCurrentStudent();
+    if (!student) {
+      toast.error('Please log in first to borrow a book.');
+      navigate('/login', { state: { from: location.pathname + location.search } });
       return;
     }
 
@@ -68,13 +86,15 @@ export const BorrowPage: React.FC = () => {
 
     setSubmitting(true);
     try {
+      const assignedSerial = selectedSerial || availableCopies[0]?.serial_number;
       const request = await dataService.submitBorrowRequest({
-        student_name: studentName,
-        student_id: studentId,
-        course,
-        year_level: yearLevel,
-        section,
+        student_name: student.full_name,
+        student_id: student.school_id,
+        course: student.course || '',
+        year_level: student.year_level || '',
+        section: student.section || '',
         book_id: selectedBookId,
+        serial_number: assignedSerial,
         duration_days: durationDays,
       });
 
@@ -82,12 +102,10 @@ export const BorrowPage: React.FC = () => {
       navigate('/request-success', {
         state: {
           inquiryNumber: request.inquiry_number,
-          studentName,
-          studentId,
-          course,
-          yearLevel,
-          section,
+          studentName: student.full_name,
+          studentId: student.school_id,
           bookTitle: selectedBook?.title || 'Book',
+          serialNumber: assignedSerial || request.serial_number,
           durationDays,
         },
       });
@@ -97,6 +115,11 @@ export const BorrowPage: React.FC = () => {
       setSubmitting(false);
     }
   };
+
+  // Redirect logged-out visitors straight to login (preserves the book they picked).
+  if (!currentStudent) {
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -112,83 +135,23 @@ export const BorrowPage: React.FC = () => {
       <div className="border-b border-slate-200 pb-4">
         <h1 className="text-3xl font-black text-slate-900">Submit Borrow Request</h1>
         <p className="text-slate-600 text-sm mt-1 font-medium">
-          Please fill out your student details and select your requested duration (1-3 days).
+          Select your requested borrow duration (1–3 days) and confirm.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Form Column */}
         <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-6">
-          {/* Student Info Card */}
-          <div className="bg-white rounded-2xl p-6 space-y-4 border border-slate-200 shadow-xs">
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
-              <UserCheck className="w-5 h-5 text-emerald-600" />
-              <span>Student Information</span>
-            </h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-semibold text-slate-700">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Juan Dela Cruz"
-                  value={studentName}
-                  onChange={(e) => setStudentName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Student ID *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 2023-01042"
-                  value={studentId}
-                  onChange={(e) => setStudentId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Course *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. BS Information Technology"
-                  value={course}
-                  onChange={(e) => setCourse(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Year Level *</label>
-                <select
-                  value={yearLevel}
-                  onChange={(e) => setYearLevel(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-800 text-sm focus:outline-none focus:border-emerald-500 shadow-xs"
-                >
-                  <option value="1st Year">1st Year</option>
-                  <option value="2nd Year">2nd Year</option>
-                  <option value="3rd Year">3rd Year</option>
-                  <option value="4th Year">4th Year</option>
-                  <option value="Graduate">Graduate</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Section *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. BSIT-3A"
-                  value={section}
-                  onChange={(e) => setSection(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs"
-                />
-              </div>
+          {/* Logged-in Student Banner */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
+              <User className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Borrowing as</p>
+              <p className="text-sm font-bold text-slate-900 truncate">{currentStudent.full_name}</p>
+              <p className="text-xs text-slate-500 font-medium">{currentStudent.school_id}</p>
             </div>
           </div>
 
@@ -222,6 +185,36 @@ export const BorrowPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Assigned Copy Serial Card */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Hash className="w-4 h-4 text-emerald-600" />
+                <span>Assigned Serial Number</span>
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Auto-Assigned Copy
+              </span>
+            </div>
+            {selectedSerial ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-emerald-50/60 border border-emerald-200">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Copy Serial</span>
+                  <p className="font-mono font-black text-sm text-emerald-800">{selectedSerial}</p>
+                </div>
+                <span className="text-[11px] text-emerald-700 font-medium">
+                  Automatically assigned for your borrow request
+                </span>
+              </div>
+            ) : loadingCopies ? (
+              <p className="text-xs text-slate-400 font-medium py-1">Loading copy serial numbers...</p>
+            ) : availableCopies.length === 0 ? (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+                All copies are currently borrowed. You may still submit a request to enter the waitlist.
+              </div>
+            ) : null}
+          </div>
+
           {/* Submit Action */}
           <button
             type="submit"
@@ -238,11 +231,11 @@ export const BorrowPage: React.FC = () => {
           <div className="bg-white rounded-2xl p-6 space-y-4 sticky top-24 border border-slate-200 shadow-xs">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
               <BookOpen className="w-5 h-5 text-emerald-600" />
-              <span>Book Information (Read Only)</span>
+              <span>Book Information</span>
             </h2>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600">Select Book Title</label>
+              <label className="text-xs font-semibold text-slate-600">Selected Book</label>
               <select
                 value={selectedBookId}
                 onChange={(e) => handleBookChange(e.target.value)}
@@ -276,15 +269,9 @@ export const BorrowPage: React.FC = () => {
                     <p className="text-base font-bold text-slate-900">{selectedBook.title}</p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Type</span>
-                      <span className="text-xs font-bold text-emerald-700">{selectedBook.type_name}</span>
-                    </div>
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Series</span>
-                      <span className="text-xs font-bold text-slate-700">{selectedBook.series_name}</span>
-                    </div>
+                  <div className="pt-2 border-t border-slate-100">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Type</span>
+                    <span className="text-xs font-bold text-emerald-700">{selectedBook.type_name}</span>
                   </div>
 
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
@@ -292,6 +279,86 @@ export const BorrowPage: React.FC = () => {
                     <span className="font-bold text-slate-900">
                       {selectedBook.available_copies} / {selectedBook.total_copies} Copies
                     </span>
+                  </div>
+
+                  {/* Serial Number Section in Book Information */}
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Book Serial Number</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Auto-Generated
+                      </span>
+                    </div>
+
+                    {loadingCopies ? (
+                      <p className="text-xs text-slate-400 font-medium">Loading serials...</p>
+                    ) : selectedSerial ? (
+                      <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-medium text-slate-600">Assigned Serial:</span>
+                          <span className="font-mono font-black text-xs text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-xs">
+                            {selectedSerial}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-emerald-700 font-medium">
+                          Each copy of this book has a unique serial number automatically assigned upon registration.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic">No available serial copy at the moment.</p>
+                    )}
+                  </div>
+
+                  {/* All Copies & Unique Serials */}
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Copies &amp; Serials ({bookCopies.length})
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">Click to select copy</span>
+                    </div>
+
+                    {loadingCopies ? (
+                      <p className="text-xs text-slate-400">Loading copies...</p>
+                    ) : bookCopies.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">No copies registered.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                        {bookCopies.map((copy) => {
+                          const isAvail = copy.status === 'Available';
+                          const isSelected = copy.serial_number === selectedSerial;
+                          return (
+                            <button
+                              key={copy.id}
+                              type="button"
+                              disabled={!isAvail}
+                              onClick={() => isAvail && setSelectedSerial(copy.serial_number)}
+                              title={isAvail ? `Click to choose copy ${copy.serial_number}` : `Copy ${copy.serial_number} is currently borrowed`}
+                              className={`px-2 py-1 rounded-lg text-[11px] font-mono font-bold border transition-all text-left flex items-center gap-1.5 ${
+                                isSelected
+                                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-2 ring-emerald-400/50'
+                                  : isAvail
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer'
+                                  : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                              }`}
+                            >
+                              <span>{copy.serial_number}</span>
+                              <span
+                                className={`text-[9px] px-1 py-0.2 rounded font-sans font-semibold ${
+                                  isSelected
+                                    ? 'bg-white/20 text-white'
+                                    : isAvail
+                                    ? 'bg-emerald-200/60 text-emerald-800'
+                                    : 'bg-slate-200 text-slate-500'
+                                }`}
+                              >
+                                {copy.status}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

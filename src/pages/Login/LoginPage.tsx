@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { dataService } from '../../services/dataService';
 import { toast } from 'sonner';
 import { Shield, KeyRound, User, Library, ArrowLeft } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from || null;
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,7 +24,17 @@ export const LoginPage: React.FC = () => {
     try {
       // Single lookup in users — admins go to the admin page, students to theirs.
       const user = await dataService.loginUser(identifier, password);
-      if (user.account_type === 'admin') {
+      if (from) {
+        // User was sent here by a guard (e.g. clicked Borrow while logged out) — send them back.
+        // Admins should never land on student-only pages, so keep them on the dashboard instead.
+        if (user.account_type === 'admin' && (from.startsWith('/borrow') || from.startsWith('/student'))) {
+          toast.success('Login successful.');
+          navigate('/admin/dashboard', { replace: true });
+        } else {
+          toast.success(user.account_type === 'admin' ? 'Login successful.' : 'Welcome back!');
+          navigate(from, { replace: true });
+        }
+      } else if (user.account_type === 'admin') {
         toast.success('Login successful.');
         navigate('/admin/dashboard');
       } else {

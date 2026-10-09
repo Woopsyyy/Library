@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
 import {
   BookOpen, ArrowRight, Sparkles, Shield,
-  Layers, UserCheck, Clock, CheckCircle2, Zap, GraduationCap, Search, Hash
+  Layers, UserCheck, Clock, CheckCircle2, Zap, GraduationCap
 } from 'lucide-react';
 import heroImg from '@/assets/images/1.jpg';
 import secondaryImg from '@/assets/images/2.jpg';
@@ -12,24 +12,6 @@ import logoImg from '@/assets/images/logo.png';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
-  const [inquiryInput, setInquiryInput] = useState('');
-  const [inquiryResult, setInquiryResult] = useState<any>(null);
-  const [inquiryError, setInquiryError] = useState('');
-  const [inquiryLoading, setInquiryLoading] = useState(false);
-
-  const handleInquiryLookup = async () => {
-    setInquiryError('');
-    setInquiryResult(null);
-    setInquiryLoading(true);
-    try {
-      const result = await dataService.getBorrowRequestByInquiryNumber(inquiryInput);
-      setInquiryResult(result);
-    } catch (err: any) {
-      setInquiryError(err.message || 'Request not found.');
-    } finally {
-      setInquiryLoading(false);
-    }
-  };
 
   const { data: books = [] } = useQuery({
     queryKey: ['books'],
@@ -242,86 +224,6 @@ export const LandingPage: React.FC = () => {
               replenish stock on return, and configure book series.
             </p>
           </div>
-        </div>
-
-        {/* Inquiry Number Lookup */}
-        <div className="glass-card rounded-2xl p-6 sm:p-8 space-y-5 border border-emerald-200 shadow-md mt-14">
-          <h3 className="text-lg font-bold text-emerald-700 flex items-center gap-2">
-            <Hash className="w-5 h-5 text-emerald-600" />
-            <span>Check Your Borrow Request</span>
-          </h3>
-          <p className="text-sm text-slate-600 font-medium">
-            Enter your inquiry number (given after submitting a request) to view your details and status.
-          </p>
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={inquiryInput}
-              onChange={(e) => setInquiryInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleInquiryLookup()}
-              placeholder="e.g. TLB-20260911-143025"
-              className="flex-1 px-4 py-3 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs placeholder:text-slate-400 font-medium tracking-wide"
-            />
-            <button
-              onClick={handleInquiryLookup}
-              disabled={!inquiryInput.trim() || inquiryLoading}
-              className="px-6 py-3 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
-            >
-              <Search className="w-4 h-4" />
-              <span>{inquiryLoading ? 'Checking...' : 'Look Up'}</span>
-            </button>
-          </div>
-          {inquiryError && (
-            <p className="text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2">{inquiryError}</p>
-          )}
-          {inquiryResult && (
-            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 text-xs">
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500 font-semibold">Inquiry Number:</span>
-                <span className="font-bold text-emerald-700 tracking-wider">{inquiryResult.inquiry_number}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500">Student Name:</span>
-                <span className="font-bold text-slate-700">{inquiryResult.student_name}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500">Student ID:</span>
-                <span className="font-bold text-slate-700">{inquiryResult.student_id}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500">Course:</span>
-                <span className="font-bold text-slate-700">{inquiryResult.course}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500">Year & Section:</span>
-                <span className="font-bold text-slate-700">{inquiryResult.year_level} - {inquiryResult.section}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500">Book:</span>
-                <span className="font-bold text-emerald-600 flex items-center gap-1">
-                  <BookOpen className="w-3.5 h-3.5" />
-                  {inquiryResult.book_title}
-                </span>
-              </div>
-              <div className="flex justify-between border-b border-slate-100 pb-2">
-                <span className="text-slate-500">Duration:</span>
-                <span className="font-bold text-slate-700 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-emerald-500" />
-                  {inquiryResult.duration_days} Day(s)
-                </span>
-              </div>
-              <div className="flex justify-between pt-1">
-                <span className="text-slate-500">Status:</span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                  inquiryResult.status === 'Approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                  : inquiryResult.status === 'Rejected' ? 'bg-red-100 text-red-700 border-red-200'
-                  : 'bg-amber-100 text-amber-700 border-amber-200'
-                }`}>
-                  {inquiryResult.status}
-                </span>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Borrow Rules Info Section */}

@@ -88,34 +88,86 @@ const BookCoverDropzone: React.FC<{
 };
 
 const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, colSpan }) => {
+  const queryClient = useQueryClient();
   const { data: copies = [], isLoading } = useQuery({
     queryKey: ['copies', bookId],
     queryFn: () => dataService.getBookCopies(bookId),
   });
+
+  const addCopyMutation = useMutation({
+    mutationFn: () => dataService.addBookCopy(bookId),
+    onSuccess: (newCopy) => {
+      queryClient.invalidateQueries({ queryKey: ['copies', bookId] });
+      queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      toast.success(`New copy added! Auto-generated serial: ${newCopy.serial_number}`);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to add copy.');
+    },
+  });
+
   return (
     <tr className="bg-slate-50/70">
       <td colSpan={colSpan} className="px-4 py-3">
         {isLoading ? (
           <p className="text-[11px] text-slate-400 font-medium pl-8">Loading serials...</p>
         ) : copies.length === 0 ? (
-          <p className="text-[11px] text-slate-400 font-medium pl-8">No copy serials yet.</p>
+          <div className="pl-8 flex items-center gap-3">
+            <p className="text-[11px] text-slate-400 font-medium">No copy serials yet.</p>
+            <button
+              type="button"
+              onClick={() => addCopyMutation.mutate()}
+              disabled={addCopyMutation.isPending}
+              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-xs transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{addCopyMutation.isPending ? 'Generating...' : 'Add First Copy'}</span>
+            </button>
+          </div>
         ) : (
-          <div className="pl-8 space-y-1.5">
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Copy serials ({copies.length})
-            </p>
+          <div className="pl-8 space-y-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Copy serials ({copies.length})
+                </p>
+                <span className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  Auto-generated unique serials
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => addCopyMutation.mutate()}
+                disabled={addCopyMutation.isPending}
+                className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-xs transition-colors"
+                title="Automatically adds another copy with the next sequential serial number"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{addCopyMutation.isPending ? 'Generating...' : '+ Add Copy'}</span>
+              </button>
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {copies.map((c) => (
                 <span
                   key={c.id}
-                  title={c.status}
-                  className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold border ${
+                  title={`Status: ${c.status}`}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-bold border flex items-center gap-1.5 ${
                     c.status === 'Borrowed'
                       ? 'bg-amber-50 text-amber-700 border-amber-200'
                       : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                   }`}
                 >
-                  {c.serial_number}
+                  <span>{c.serial_number}</span>
+                  <span
+                    className={`text-[9px] px-1 py-0.2 rounded font-sans ${
+                      c.status === 'Borrowed'
+                        ? 'bg-amber-200/60 text-amber-800'
+                        : 'bg-emerald-200/60 text-emerald-800'
+                    }`}
+                  >
+                    {c.status}
+                  </span>
                 </span>
               ))}
             </div>
@@ -667,6 +719,9 @@ export const BooksPage: React.FC = () => {
                   onChange={(e) => setTotalCopies(Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                 />
+                <p className="text-[11px] text-emerald-700 font-medium pt-0.5">
+                  ✨ Unique serial numbers will be automatically generated for all {totalCopies || 1} {totalCopies === 1 ? 'copy' : 'copies'}. No manual entry required.
+                </p>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">

@@ -1,21 +1,19 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { dataService, generateSchoolId, isValidSchoolId } from '../../services/dataService';
+import { dataService, isValidSchoolId } from '../../services/dataService';
 import { toast } from 'sonner';
-import { GraduationCap, IdCard, User, KeyRound, ArrowLeft, Dices, UserPlus } from 'lucide-react';
+import { GraduationCap, IdCard, User, KeyRound, ArrowLeft, UserPlus, BookOpen, Layers } from 'lucide-react';
 
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
-  const year = new Date().getFullYear();
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [schoolId, setSchoolId] = useState('');
+  const [course, setCourse] = useState('');
+  const [yearLevel, setYearLevel] = useState('1st Year');
+  const [section, setSection] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const handleGenerate = () => {
-    setSchoolId(generateSchoolId());
-  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +23,7 @@ export const SignupPage: React.FC = () => {
       return;
     }
     if (!isValidSchoolId(schoolId)) {
-      toast.error(`School ID must look like ${year}-1234.`);
+      toast.error('School ID must look like 1234-5678.');
       return;
     }
     if (!username.trim() || username.trim().length < 3) {
@@ -36,6 +34,14 @@ export const SignupPage: React.FC = () => {
       toast.error('Username cannot contain spaces.');
       return;
     }
+    if (!course.trim()) {
+      toast.error('Please enter your course.');
+      return;
+    }
+    if (!section.trim()) {
+      toast.error('Please enter your section.');
+      return;
+    }
     if (!password || password.length < 6) {
       toast.error('Password must be at least 6 characters.');
       return;
@@ -43,7 +49,15 @@ export const SignupPage: React.FC = () => {
 
     setLoading(true);
     try {
-      await dataService.signupStudent({ school_id: schoolId, username, full_name: fullName, password });
+      await dataService.signupStudent({
+        school_id: schoolId,
+        username,
+        full_name: fullName,
+        password,
+        course,
+        year_level: yearLevel,
+        section,
+      });
       toast.success('Account created. Welcome to your library!');
       navigate('/student');
     } catch (err: any) {
@@ -54,7 +68,7 @@ export const SignupPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center px-4 bg-slate-50 text-slate-900 relative">
+    <div className="min-h-screen flex flex-col justify-center items-center px-4 bg-slate-50 text-slate-900 relative py-10">
       <div className="absolute top-6 left-6">
         <Link
           to="/"
@@ -78,6 +92,8 @@ export const SignupPage: React.FC = () => {
 
         <div className="bg-white rounded-2xl p-6 sm:p-8 space-y-6 border border-slate-200 shadow-md">
           <form onSubmit={handleSignup} className="space-y-4">
+
+            {/* Full Name */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-700">Full Name</label>
               <div className="relative">
@@ -93,6 +109,7 @@ export const SignupPage: React.FC = () => {
               </div>
             </div>
 
+            {/* School ID */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-700">School ID</label>
               <div className="relative">
@@ -100,26 +117,18 @@ export const SignupPage: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder={`${year}-1234`}
+                  placeholder="1234-5678"
                   value={schoolId}
                   onChange={(e) => setSchoolId(e.target.value)}
-                  className="w-full pl-10 pr-24 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs font-mono"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs font-mono"
                 />
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  title="Generate a valid School ID"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-700 transition-colors"
-                >
-                  <Dices className="w-3.5 h-3.5" />
-                  <span>Generate</span>
-                </button>
               </div>
               <p className="text-[11px] text-slate-500 font-medium">
-                Format: <span className="font-mono font-bold">{year}-XXXX</span> (current year + 4 random digits)
+                Format: <span className="font-mono font-bold">XXXX-XXXX</span> (e.g. 1234-5678)
               </p>
             </div>
 
+            {/* Username */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-700">Username</label>
               <div className="relative">
@@ -138,6 +147,55 @@ export const SignupPage: React.FC = () => {
               </p>
             </div>
 
+            {/* Course */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Course</label>
+              <div className="relative">
+                <BookOpen className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. BS Information Technology"
+                  value={course}
+                  onChange={(e) => setCourse(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs"
+                />
+              </div>
+            </div>
+
+            {/* Year Level & Section — side by side */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Year Level</label>
+                <select
+                  value={yearLevel}
+                  onChange={(e) => setYearLevel(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-800 text-sm focus:outline-none focus:border-emerald-500 shadow-xs cursor-pointer"
+                >
+                  <option value="1st Year">1st Year</option>
+                  <option value="2nd Year">2nd Year</option>
+                  <option value="3rd Year">3rd Year</option>
+                  <option value="4th Year">4th Year</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Section</label>
+                <div className="relative">
+                  <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. BSIT-3A"
+                    value={section}
+                    onChange={(e) => setSection(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Password */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-700">Password</label>
               <div className="relative">
