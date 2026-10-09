@@ -241,7 +241,6 @@ export const BooksPage: React.FC = () => {
   // Form states
   const [title, setTitle] = useState('');
   const [typeId, setTypeId] = useState('');
-  const [seriesName, setSeriesName] = useState('');
   const [author, setAuthor] = useState('');
   const [publishedDate, setPublishedDate] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -261,12 +260,7 @@ export const BooksPage: React.FC = () => {
     queryFn: () => dataService.getBookTypes(),
   });
 
-  const { data: bookSeries = [] } = useQuery({
-    queryKey: ['bookSeries'],
-    queryFn: () => dataService.getBookSeries(),
-  });
-
-  const { data: authors = [] } = useQuery({
+const { data: authors = [] } = useQuery({
     queryKey: ['authors'],
     queryFn: () => dataService.getAuthors(),
   });
@@ -287,7 +281,6 @@ export const BooksPage: React.FC = () => {
   };
 
   const resetMetaFields = () => {
-    setSeriesName('');
     setAuthor('');
     setPublishedDate('');
     setSelectedTags([]);
@@ -315,7 +308,6 @@ export const BooksPage: React.FC = () => {
     setEditingBook(book);
     setTitle(book.title);
     setTypeId(book.type_id);
-    setSeriesName(book.series_name || '');
     setAuthor(book.author || '');
     setPublishedDate(book.published_date || '');
     setSelectedTags(Array.isArray(book.tags) ? [...book.tags] : []);
@@ -326,7 +318,7 @@ export const BooksPage: React.FC = () => {
   };
 
   const addMutation = useMutation({
-    mutationFn: (data: { title: string; type_id: string; series_name: string; total_copies: number; author: string; published_date: string; tags: string[]; cover_file?: File | null }) =>
+    mutationFn: (data: { title: string; type_id: string; total_copies: number; author: string; published_date: string; tags: string[]; cover_file?: File | null }) =>
       dataService.addBook(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
@@ -379,14 +371,9 @@ export const BooksPage: React.FC = () => {
       toast.error('Title is required.');
       return;
     }
-    if (!seriesName.trim()) {
-      toast.error('Series is required. Type a series name.');
-      return;
-    }
     addMutation.mutate({
       title,
       type_id: typeId || (bookTypes[0]?.id || ''),
-      series_name: seriesName,
       total_copies: Number(totalCopies),
       author,
       published_date: publishedDate,
@@ -398,16 +385,11 @@ export const BooksPage: React.FC = () => {
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingBook) return;
-    if (!seriesName.trim()) {
-      toast.error('Series is required. Type a series name.');
-      return;
-    }
     editMutation.mutate({
       id: editingBook.id,
       updates: {
         title,
         type_id: typeId,
-        series_name: seriesName,
         total_copies: Number(totalCopies),
         status,
         author,
@@ -423,7 +405,6 @@ export const BooksPage: React.FC = () => {
     return (
       b.title.toLowerCase().includes(q) ||
       (b.type_name && b.type_name.toLowerCase().includes(q)) ||
-      (b.series_name && b.series_name.toLowerCase().includes(q)) ||
       (b.author && b.author.toLowerCase().includes(q)) ||
       (Array.isArray(b.tags) && b.tags.some((t) => t.toLowerCase().includes(q)))
     );
@@ -435,7 +416,7 @@ export const BooksPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900">Books Inventory</h1>
-          <p className="text-xs font-medium text-slate-500">Manage catalog titles, series, and available stock copies.</p>
+          <p className="text-xs font-medium text-slate-500">Manage catalog titles and available stock copies.</p>
         </div>
 
         <button
@@ -452,7 +433,7 @@ export const BooksPage: React.FC = () => {
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
-          placeholder="Search by title, type, series, author, or tag..."
+          placeholder="Search by title, type, author, or tag..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
@@ -469,7 +450,6 @@ export const BooksPage: React.FC = () => {
                 <th className="px-4 py-3">Cover</th>
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Series</th>
                 <th className="px-4 py-3">Author</th>
                 <th className="px-4 py-3">Tags</th>
                 <th className="px-4 py-3 text-center">Total Copies</th>
@@ -527,11 +507,6 @@ export const BooksPage: React.FC = () => {
                         {book.type_name}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                        {book.series_name}
-                      </span>
-                    </td>
                     <td className="px-4 py-3 font-semibold text-slate-800 max-w-[10rem] truncate" title={book.author || ''}>
                       {book.author || <span className="text-slate-300">—</span>}
                     </td>
@@ -582,7 +557,7 @@ export const BooksPage: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                  {expandedBookId === book.id && <BookCopiesRow bookId={book.id} colSpan={11} />}
+                  {expandedBookId === book.id && <BookCopiesRow bookId={book.id} colSpan={10} />}
                   </React.Fragment>
                 ))
               )}
@@ -667,24 +642,6 @@ export const BooksPage: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Series *</label>
-                  <input
-                    type="text"
-                    list="series-suggestions"
-                    required
-                    placeholder="Type series name"
-                    value={seriesName}
-                    onChange={(e) => setSeriesName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
-                  />
-                  <datalist id="series-suggestions">
-                    {bookSeries.map((s) => (
-                      <option key={s.id} value={s.name} />
-                    ))}
-                  </datalist>
-                </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700">Date Published</label>
                   <input
@@ -812,19 +769,6 @@ export const BooksPage: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Series</label>
-                  <input
-                    type="text"
-                    list="series-suggestions"
-                    required
-                    placeholder="Type series name"
-                    value={seriesName}
-                    onChange={(e) => setSeriesName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
-                  />
-                </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700">Date Published</label>
                   <input

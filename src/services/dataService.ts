@@ -1,12 +1,11 @@
 import {
-  Book, BookType, BookSeries, Author, Tag, BookCopy, BorrowRequest, BorrowRecord, BorrowRecordStatus, ReturnRecord, User, AccountType, ActivityLog
+  Book, BookType, Author, Tag, BookCopy, BorrowRequest, BorrowRecord, BorrowRecordStatus, ReturnRecord, User, AccountType, ActivityLog
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 // Local storage keys for fallback cache
 const STORAGE_KEYS = {
   TYPES: 'talisay_book_types',
-  SERIES: 'talisay_book_series',
   AUTHORS: 'talisay_authors',
   TAGS: 'talisay_tags',
   COPIES: 'talisay_book_copies',
@@ -291,62 +290,6 @@ export const dataService = {
     logActivity('Type removed', `Deleted book type "${target?.name || id}"`);
   },
 
-  // BOOK SERIES
-  async getBookSeries(): Promise<BookSeries[]> {
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('book_series').select('*').order('name');
-      if (!error && data) return data;
-    }
-    return getLocal<BookSeries[]>(STORAGE_KEYS.SERIES, []);
-  },
-
-  async addBookSeries(name: string): Promise<BookSeries> {
-    const cleanName = name.trim();
-    if (!cleanName) throw new Error('Series name is required.');
-
-    const conn = await validateDatabaseConnection();
-    if (!conn.connected && isSupabaseConfigured) {
-      throw new Error(conn.message || 'Database not connected.');
-    }
-
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('book_series').insert([{ name: cleanName }]).select().single();
-      if (error) throw new Error(error.message);
-      logActivity('Series added', `Added book series "${cleanName}"`);
-      return data;
-    }
-
-    const seriesList = getLocal<BookSeries[]>(STORAGE_KEYS.SERIES, []);
-    if (seriesList.some(s => s.name.toLowerCase() === cleanName.toLowerCase())) {
-      throw new Error('Series already exists.');
-    }
-    const newSeries: BookSeries = { id: 'series-' + Date.now(), name: cleanName, created_at: new Date().toISOString() };
-    seriesList.push(newSeries);
-    setLocal(STORAGE_KEYS.SERIES, seriesList);
-    logActivity('Series added', `Added book series "${cleanName}"`);
-    return newSeries;
-  },
-
-  async deleteBookSeries(id: string): Promise<void> {
-    const conn = await validateDatabaseConnection();
-    if (!conn.connected && isSupabaseConfigured) {
-      throw new Error(conn.message || 'Database not connected.');
-    }
-
-    if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('book_series').delete().eq('id', id);
-      if (error) throw new Error(error.message);
-      logActivity('Series removed', `Deleted book series ID ${id}`);
-      return;
-    }
-
-    const seriesList = getLocal<BookSeries[]>(STORAGE_KEYS.SERIES, []);
-    const target = seriesList.find(s => s.id === id);
-    const updated = seriesList.filter(s => s.id !== id);
-    setLocal(STORAGE_KEYS.SERIES, updated);
-    logActivity('Series removed', `Deleted series "${target?.name || id}"`);
-  },
-
   // AUTHORS
   async getAuthors(): Promise<Author[]> {
     if (isSupabaseConfigured && supabase) {
@@ -461,17 +404,6 @@ export const dataService = {
     const target = tags.find(t => t.id === id);
     setLocal(STORAGE_KEYS.TAGS, tags.filter(t => t.id !== id));
     logActivity('Tag removed', `Deleted tag "${target?.name || id}"`);
-  },
-
-  // Resolve a typed series name to an id, creating the series entry when new.
-  async resolveSeriesId(name: string): Promise<{ id: string; name: string }> {
-    const clean = name.trim();
-    if (!clean) throw new Error('Series is required.');
-    const series = await this.getBookSeries();
-    const found = series.find(s => s.name.toLowerCase() === clean.toLowerCase());
-    if (found) return { id: found.id, name: found.name };
-    const created = await this.addBookSeries(clean);
-    return { id: created.id, name: created.name };
   },
 
   // Ensure free-typed author/tags exist in the lookup tables (best effort).
@@ -633,8 +565,7 @@ export const dataService = {
   // BOOKS
   async getBooks(): Promise<Book[]> {
     const types = await this.getBookTypes();
-    const series = await this.getBookSeries();
-    
+
     let rawBooks: any[] = [];
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.from('books').select('*').order('created_at', { ascending: false });
@@ -646,13 +577,11 @@ export const dataService = {
 
     return rawBooks.map(b => {
       const typeObj = types.find(t => t.id === b.type_id);
-      const seriesObj = series.find(s => s.id === b.series_id);
       return {
         ...b,
         total_copies: Number(b.total_copies) || 0,
         available_copies: Number(b.available_copies) || 0,
         type_name: typeObj ? typeObj.name : (b.type_name || 'Unassigned'),
-        series_name: seriesObj ? seriesObj.name : (b.series_name || 'Unassigned'),
         author: b.author || '',
         published_date: b.published_date || null,
         tags: Array.isArray(b.tags) ? b.tags : [],
@@ -660,7 +589,7 @@ export const dataService = {
     });
   },
 
-  async addBook(data: { title: string; type_id: string; series_name: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; cover_file?: File | null }): Promise<Book> {
+  async addBook(data: { title: string; type_id: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; cover_file?: File | null }): Promise<Book> {
     if (!data.title.trim()) throw new Error('Book title is required.');
     if (data.total_copies < 1) throw new Error('Total copies must be at least 1.');
 
@@ -673,7 +602,6 @@ export const dataService = {
     const types = await this.getBookTypes();
     const typeObj = types.find(t => t.id === data.type_id);
     if (!typeObj) throw new Error('Please select a book type.');
-    const series = await this.resolveSeriesId(data.series_name);
     const author = await this.ensureAuthor(data.author || '');
     const tags = await this.ensureTags(data.tags || []);
     const published = (data.published_date || '').trim() || null;
@@ -683,7 +611,6 @@ export const dataService = {
     const newBookObj = {
       title: data.title.trim(),
       type_id: data.type_id,
-      series_id: series.id,
       total_copies: total,
       available_copies: total,
       status: 'Available' as const,
@@ -704,7 +631,6 @@ export const dataService = {
         total_copies: counts.total,
         available_copies: counts.available,
         type_name: typeObj?.name || '',
-        series_name: series.name,
         author: inserted.author || '',
         published_date: inserted.published_date || null,
         tags: Array.isArray(inserted.tags) ? inserted.tags : [],
@@ -716,7 +642,6 @@ export const dataService = {
       id: 'book-' + Date.now(),
       ...newBookObj,
       type_name: typeObj?.name || '',
-      series_name: series.name,
       created_at: new Date().toISOString(),
     };
     books.unshift(newBook);
@@ -729,7 +654,7 @@ export const dataService = {
     return newBook;
   },
 
-  async updateBook(id: string, updates: Partial<Book> & { series_name?: string; cover_file?: File | null }): Promise<Book> {
+  async updateBook(id: string, updates: Partial<Book> & { cover_file?: File | null }): Promise<Book> {
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
       throw new Error(conn.message || 'Database not connected.');
@@ -750,14 +675,8 @@ export const dataService = {
 
     const bookUpdates: Partial<Book> = { ...updates };
     delete (bookUpdates as Partial<Book> & { cover_file?: File | null }).cover_file;
-    delete (bookUpdates as Partial<Book> & { series_name?: string }).series_name;
     if (updates.cover_file) {
       bookUpdates.cover_url = await resolveCoverUrl(updates.cover_file);
-    }
-    // Free-typed series name resolves (and auto-creates) the series entry.
-    if (updates.series_name !== undefined) {
-      const series = await this.resolveSeriesId(updates.series_name);
-      bookUpdates.series_id = series.id;
     }
     // Keep lookup tables complete when new author/tags are typed in.
     if (updates.author !== undefined) {
@@ -787,7 +706,6 @@ export const dataService = {
       const { error } = await supabase.from('books').update({
         title: updatedBook.title,
         type_id: updatedBook.type_id,
-        series_id: updatedBook.series_id,
         total_copies: updatedBook.total_copies,
         available_copies: updatedBook.available_copies,
         status: updatedBook.status,

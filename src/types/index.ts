@@ -9,19 +9,12 @@ export interface BookType {
   created_at?: string;
 }
 
-export interface BookSeries {
-  id: string;
-  name: string;
-  created_at?: string;
-}
 
 export interface Book {
   id: string;
   title: string;
   type_id: string;
-  series_id: string;
   type_name?: string;
-  series_name?: string;
   total_copies: number;
   available_copies: number;
   status: BookStatus;
@@ -55,7 +48,7 @@ export interface BorrowRequest {
   book_id: string;
   book_title?: string;
   book_type?: string;
-  book_series?: string;
+
   serial_number?: string;
   duration_days: number;
   request_date: string;
