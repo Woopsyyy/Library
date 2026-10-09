@@ -778,7 +778,6 @@ export const dataService = {
       ...found,
       book_title: found.book_title || book?.title || 'Book',
       book_type: found.book_type || book?.type_name,
-      book_series: found.book_series || book?.series_name,
     };
   },
 
@@ -833,7 +832,6 @@ export const dataService = {
       book_id: data.book_id,
       book_title: targetBook.title,
       book_type: targetBook.type_name,
-      book_series: targetBook.series_name,
       serial_number: data.serial_number?.trim() || undefined,
       duration_days: Number(data.duration_days),
       request_date: new Date().toISOString(),
