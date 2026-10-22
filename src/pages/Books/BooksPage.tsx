@@ -243,6 +243,9 @@ export const BooksPage: React.FC = () => {
   const [typeId, setTypeId] = useState('');
   const [author, setAuthor] = useState('');
   const [publishedDate, setPublishedDate] = useState('');
+  const [location, setLocation] = useState('');
+  const [copyrightYear, setCopyrightYear] = useState('');
+  const [publisher, setPublisher] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [totalCopies, setTotalCopies] = useState<number>(1);
   const [status, setStatus] = useState<BookStatus>('Available');
@@ -283,6 +286,9 @@ const { data: authors = [] } = useQuery({
   const resetMetaFields = () => {
     setAuthor('');
     setPublishedDate('');
+    setLocation('');
+    setCopyrightYear('');
+    setPublisher('');
     setSelectedTags([]);
   };
 
@@ -310,6 +316,9 @@ const { data: authors = [] } = useQuery({
     setTypeId(book.type_id);
     setAuthor(book.author || '');
     setPublishedDate(book.published_date || '');
+    setLocation(book.location || '');
+    setCopyrightYear(book.copyright_year || '');
+    setPublisher(book.publisher || '');
     setSelectedTags(Array.isArray(book.tags) ? [...book.tags] : []);
     setTotalCopies(book.total_copies);
     setStatus(book.status);
@@ -318,7 +327,7 @@ const { data: authors = [] } = useQuery({
   };
 
   const addMutation = useMutation({
-    mutationFn: (data: { title: string; type_id: string; total_copies: number; author: string; published_date: string; tags: string[]; cover_file?: File | null }) =>
+    mutationFn: (data: { title: string; type_id: string; total_copies: number; author: string; published_date: string; location: string; copyright_year: string; publisher: string; tags: string[]; cover_file?: File | null }) =>
       dataService.addBook(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
@@ -377,6 +386,9 @@ const { data: authors = [] } = useQuery({
       total_copies: Number(totalCopies),
       author,
       published_date: publishedDate,
+      location,
+      copyright_year: copyrightYear,
+      publisher,
       tags: selectedTags,
       cover_file: coverFile,
     });
@@ -394,6 +406,9 @@ const { data: authors = [] } = useQuery({
         status,
         author,
         published_date: publishedDate,
+        location,
+        copyright_year: copyrightYear,
+        publisher,
         tags: selectedTags,
         cover_file: coverFile,
       },
@@ -651,6 +666,41 @@ const { data: authors = [] } = useQuery({
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                   />
                 </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Location</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Shelf A-3, Room 101"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Copyright Year</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 2023"
+                    value={copyrightYear}
+                    onChange={(e) => setCopyrightYear(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Publisher</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Penguin Books"
+                    value={publisher}
+                    onChange={(e) => setPublisher(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -775,6 +825,41 @@ const { data: authors = [] } = useQuery({
                     type="date"
                     value={publishedDate}
                     onChange={(e) => setPublishedDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Location</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Shelf A-3, Room 101"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Copyright Year</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 2023"
+                    value={copyrightYear}
+                    onChange={(e) => setCopyrightYear(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Publisher</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Penguin Books"
+                    value={publisher}
+                    onChange={(e) => setPublisher(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                   />
                 </div>

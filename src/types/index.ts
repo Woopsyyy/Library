@@ -22,6 +22,9 @@ export interface Book {
   author?: string;
   published_date?: string | null;
   tags?: string[];
+  location?: string;
+  copyright_year?: string;
+  publisher?: string;
   created_at?: string;
 }
 

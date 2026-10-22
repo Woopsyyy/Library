@@ -585,11 +585,14 @@ export const dataService = {
         author: b.author || '',
         published_date: b.published_date || null,
         tags: Array.isArray(b.tags) ? b.tags : [],
+        location: b.location || null,
+        copyright_year: b.copyright_year || null,
+        publisher: b.publisher || null,
       };
     });
   },
 
-  async addBook(data: { title: string; type_id: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; cover_file?: File | null }): Promise<Book> {
+  async addBook(data: { title: string; type_id: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; location?: string; copyright_year?: string; publisher?: string; cover_file?: File | null }): Promise<Book> {
     if (!data.title.trim()) throw new Error('Book title is required.');
     if (data.total_copies < 1) throw new Error('Total copies must be at least 1.');
 
@@ -617,6 +620,9 @@ export const dataService = {
       author,
       published_date: published,
       tags,
+      location: data.location?.trim() || undefined,
+      copyright_year: data.copyright_year?.trim() || undefined,
+      publisher: data.publisher?.trim() || undefined,
       ...(cover_url ? { cover_url } : {}),
     };
 
@@ -634,6 +640,9 @@ export const dataService = {
         author: inserted.author || '',
         published_date: inserted.published_date || null,
         tags: Array.isArray(inserted.tags) ? inserted.tags : [],
+        location: inserted.location || undefined,
+        copyright_year: inserted.copyright_year || undefined,
+        publisher: inserted.publisher || undefined,
       };
     }
 
@@ -688,6 +697,15 @@ export const dataService = {
     if (updates.published_date !== undefined) {
       bookUpdates.published_date = (updates.published_date || '').trim() || null;
     }
+    if (updates.location !== undefined) {
+      bookUpdates.location = (updates.location || '').trim() || undefined;
+    }
+    if (updates.copyright_year !== undefined) {
+      bookUpdates.copyright_year = (updates.copyright_year || '').trim() || undefined;
+    }
+    if (updates.publisher !== undefined) {
+      bookUpdates.publisher = (updates.publisher || '').trim() || undefined;
+    }
 
     const updatedBook: Book = {
       ...books[index],
@@ -712,6 +730,9 @@ export const dataService = {
         author: updatedBook.author || '',
         published_date: (updatedBook.published_date || '').trim() || null,
         tags: Array.isArray(updatedBook.tags) ? updatedBook.tags : [],
+        location: updatedBook.location || undefined,
+        copyright_year: updatedBook.copyright_year || undefined,
+        publisher: updatedBook.publisher || undefined,
         ...(updatedBook.cover_url ? { cover_url: updatedBook.cover_url } : {}),
       }).eq('id', id);
       if (error) throw new Error(error.message);

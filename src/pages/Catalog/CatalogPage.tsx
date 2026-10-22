@@ -52,6 +52,9 @@ const BookSerialsModal: React.FC<{
             </div>
             <h4 className="text-sm font-bold text-slate-900 leading-snug">{book.title}</h4>
             {book.author && <p className="text-xs text-slate-500 font-medium">by {book.author}</p>}
+            {book.publisher && <p className="text-xs text-slate-500 font-medium">Publisher: {book.publisher}</p>}
+            {book.copyright_year && <p className="text-xs text-slate-500 font-medium">Copyright: {book.copyright_year}</p>}
+            {book.location && <p className="text-xs text-slate-500 font-medium">Location: {book.location}</p>}
             <p className="text-xs text-slate-600 font-semibold pt-1">
               Availability: <span className="text-emerald-700 font-bold">{book.available_copies} / {book.total_copies} Copies</span>
             </p>
