@@ -63,6 +63,9 @@ function normalizeUser(row: any, fallbackType: AccountType = 'student'): User {
     full_name: row.full_name || '',
     role: row.role || (type === 'admin' ? 'Admin' : 'Student'),
     status: row.status || 'Active',
+    course: row.course || '',
+    year_level: row.year_level || '',
+    section: row.section || '',
     created_at: row.created_at,
     password: row.password,
     plain_password: row.plain_password,
@@ -1319,10 +1322,45 @@ export const dataService = {
 
     const users = await this.getUsers();
     const lowered = clean.toLowerCase();
-    const found = users.find(u =>
+    let found = users.find(u =>
       (u.username && u.username.toLowerCase() === lowered) ||
       (u.school_id && u.school_id.toLowerCase() === lowered)
     );
+
+    // Fallback: Check local storage in case account was saved during offline or previous failed sync
+    if (!found) {
+      const localUsers = getLocalUsers();
+      const localFound = localUsers.find(u =>
+        (u.username && u.username.toLowerCase() === lowered) ||
+        (u.school_id && u.school_id.toLowerCase() === lowered)
+      );
+      if (localFound) {
+        found = { ...localFound };
+        // Sync this user to Supabase so subsequent logins work cleanly
+        if (isSupabaseConfigured && supabase) {
+          try {
+            const syncPayload = {
+              account_type: localFound.account_type,
+              username: localFound.username,
+              school_id: localFound.school_id,
+              full_name: localFound.full_name,
+              role: localFound.role,
+              status: localFound.status,
+              created_at: localFound.created_at || new Date().toISOString(),
+              password: localFound.password,
+              plain_password: localFound.plain_password,
+            };
+            const { data: synced } = await supabase.from('users').insert([syncPayload]).select().single();
+            if (synced) {
+              found = normalizeUser({ ...localFound, ...synced });
+            }
+          } catch (syncErr) {
+            console.warn('Syncing local user to Supabase:', syncErr);
+          }
+        }
+      }
+    }
+
     if (!found) throw new Error('Invalid username / School ID or password.');
     if (found.status !== 'Active') throw new Error('This account has been disabled. Please contact the library.');
 
@@ -1330,6 +1368,17 @@ export const dataService = {
     const ok = (found.password && found.password === inputHash) ||
       (!found.password && found.plain_password === password); // legacy plain-text rows
     if (!ok) throw new Error('Invalid username / School ID or password.');
+
+    // Merge student metadata if available locally
+    if (found.account_type === 'student' && (!found.course || !found.year_level || !found.section)) {
+      const localUsers = getLocalUsers();
+      const local = localUsers.find(u => u.school_id.toLowerCase() === (found.school_id || '').toLowerCase());
+      if (local) {
+        found.course = found.course || local.course;
+        found.year_level = found.year_level || local.year_level;
+        found.section = found.section || local.section;
+      }
+    }
 
     setLocal(STORAGE_KEYS.SESSION, found);
     if (found.account_type === 'admin') {
@@ -1397,7 +1446,7 @@ export const dataService = {
     };
 
     if (isSupabaseConfigured && supabase) {
-      const { data: inserted, error } = await supabase.from('users').insert([{
+      const fullPayload = {
         account_type: newStudent.account_type,
         username: newStudent.username,
         school_id: newStudent.school_id,
@@ -1410,19 +1459,64 @@ export const dataService = {
         created_at: newStudent.created_at,
         password: newStudent.password,
         plain_password: newStudent.plain_password,
-      }]).select().single();
+      };
+
+      let { data: inserted, error } = await supabase.from('users').insert([fullPayload]).select().single();
+
+      // If Supabase users table doesn't have course/year_level/section columns yet, retry without them
+      if (error && /course|year_level|section/i.test(error.message)) {
+        console.warn('Supabase users table is missing course/year_level/section columns. Retrying insert without them.');
+        const fallbackPayload = {
+          account_type: newStudent.account_type,
+          username: newStudent.username,
+          school_id: newStudent.school_id,
+          full_name: newStudent.full_name,
+          role: newStudent.role,
+          status: newStudent.status,
+          created_at: newStudent.created_at,
+          password: newStudent.password,
+          plain_password: newStudent.plain_password,
+        };
+        const retry = await supabase.from('users').insert([fallbackPayload]).select().single();
+        if (!retry.error && retry.data) {
+          inserted = {
+            ...retry.data,
+            course: newStudent.course,
+            year_level: newStudent.year_level,
+            section: newStudent.section,
+          };
+          error = null;
+        } else {
+          error = retry.error;
+        }
+      }
+
       if (!error && inserted) {
         const session = normalizeUser(inserted);
+        // Ensure student-specific fields stay populated in session even if DB omitted them
+        session.course = session.course || newStudent.course;
+        session.year_level = session.year_level || newStudent.year_level;
+        session.section = session.section || newStudent.section;
+
+        // Keep local cache in sync
+        const currentLocal = getLocalUsers().filter(u =>
+          u.school_id.toLowerCase() !== schoolId.toLowerCase() &&
+          u.username.toLowerCase() !== username.toLowerCase()
+        );
+        currentLocal.unshift(session);
+        setLocal(STORAGE_KEYS.USERS, currentLocal);
+
         setLocal(STORAGE_KEYS.SESSION, session);
         logActivity('Student signup', `Student ${fullName} (${schoolId}) created an account`, fullName);
         return session;
       }
+
       const msg = error?.message || '';
       if (/duplicate|already exists/i.test(msg)) {
         throw new Error('This School ID or username is already registered. Please sign in.');
       }
       // Table missing (fresh Supabase project without migration) -> fall back to local.
-      const missingTable = /users/i.test(msg) && /schema cache|Could not find the table|does not exist/i.test(msg);
+      const missingTable = /relation.*does not exist|table.*does not exist/i.test(msg) || (/users/i.test(msg) && /Could not find the table/i.test(msg));
       if (!missingTable) throw new Error(error?.message || 'Failed to create account.');
     }
 

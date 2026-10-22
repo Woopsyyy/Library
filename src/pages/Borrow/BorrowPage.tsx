@@ -140,56 +140,67 @@ export const BorrowPage: React.FC = () => {
     return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
 
+  const formatPublishedDate = (dateStr?: string | null): string => {
+    if (!dateStr) return 'Not specified';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
   const detailItems = selectedBook ? [
     { 
+      label: 'Type', 
+      value: selectedBook.type_name || 'Unassigned', 
+      icon: Tag, 
+      color: 'text-violet-600',
+      bg: 'bg-violet-50',
+      border: 'border-violet-200'
+    },
+    { 
       label: 'Author', 
-      value: selectedBook.author, 
+      value: selectedBook.author || 'Not specified', 
       icon: UserIcon, 
       color: 'text-amber-600',
       bg: 'bg-amber-50',
       border: 'border-amber-200'
     },
     { 
-      label: 'Publisher', 
-      value: selectedBook.publisher, 
-      icon: Building2, 
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-      border: 'border-blue-200'
-    },
-    { 
-      label: 'Copyright Year', 
-      value: selectedBook.copyright_year, 
-      icon: CalendarIcon, 
-      color: 'text-purple-600',
-      bg: 'bg-purple-50',
-      border: 'border-purple-200'
-    },
-    { 
-      label: 'Location', 
-      value: selectedBook.location, 
-      icon: MapPin, 
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
-      border: 'border-emerald-200'
-    },
-    { 
       label: 'Date Published', 
-      value: selectedBook.published_date, 
+      value: selectedBook.published_date ? formatPublishedDate(selectedBook.published_date) : 'Not specified', 
       icon: CalendarIcon, 
       color: 'text-orange-600',
       bg: 'bg-orange-50',
       border: 'border-orange-200'
     },
     { 
-      label: 'Type', 
-      value: selectedBook.type_name, 
-      icon: Tag, 
-      color: 'text-violet-600',
-      bg: 'bg-violet-50',
-      border: 'border-violet-200'
+      label: 'Location', 
+      value: selectedBook.location || 'Not specified', 
+      icon: MapPin, 
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
+      border: 'border-emerald-200'
     },
-  ].filter(item => item.value) : [];
+    { 
+      label: 'Copyright Year', 
+      value: selectedBook.copyright_year || 'Not specified', 
+      icon: CalendarIcon, 
+      color: 'text-purple-600',
+      bg: 'bg-purple-50',
+      border: 'border-purple-200'
+    },
+    { 
+      label: 'Publisher', 
+      value: selectedBook.publisher || 'Not specified', 
+      icon: Building2, 
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      border: 'border-blue-200'
+    },
+  ] : [];
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -254,7 +265,7 @@ export const BorrowPage: React.FC = () => {
               >
                 {books.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.title} {b.available_copies > 0 ? `(${b.available_copies} available)` : '(Waitlist)'}
+                    {b.title} {b.author ? `— ${b.author}` : ''} {b.type_name ? `(${b.type_name})` : ''} {b.available_copies > 0 ? `• ${b.available_copies} available` : '• Waitlist'}
                   </option>
                 ))}
               </select>
@@ -296,7 +307,7 @@ export const BorrowPage: React.FC = () => {
                     </div>
                     <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/90 text-slate-800 backdrop-blur-sm shadow-lg border border-white/20 flex items-center gap-1.5">
                       <Tag className="w-3 h-3" />
-                      {selectedBook.type_name}
+                      {selectedBook.type_name || 'Unassigned'}
                     </span>
                   </div>
                 </div>
@@ -306,8 +317,8 @@ export const BorrowPage: React.FC = () => {
                   <h3 className="text-xl font-bold text-slate-900">{selectedBook.title}</h3>
 
                   {/* Detail Cards Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {detailItems.map((item, index) => {
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {detailItems.map((item) => {
                       const Icon = item.icon;
                       return (
                         <div
@@ -315,12 +326,12 @@ export const BorrowPage: React.FC = () => {
                           className={`p-4 rounded-xl border ${item.border} ${item.bg} hover:border-opacity-50 transition-all group`}
                         >
                           <div className="flex items-start gap-3">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.color} bg-white/80 shadow-sm group-hover:scale-105 transition-transform`}>
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.color} bg-white/80 shadow-sm group-hover:scale-105 transition-transform shrink-0`}>
                               <Icon className="w-5 h-5" />
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{item.label}</p>
-                              <p className="text-sm font-semibold text-slate-900 truncate">{item.value}</p>
+                              <p className="text-sm font-semibold text-slate-900 truncate" title={item.value}>{item.value}</p>
                             </div>
                           </div>
                         </div>
@@ -330,7 +341,7 @@ export const BorrowPage: React.FC = () => {
                     {/* Availability Card - Always Show */}
                     <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50">
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
                           <CheckCircle2 className="w-5 h-5" />
                         </div>
                         <div className="flex-1">
@@ -343,6 +354,36 @@ export const BorrowPage: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Tags (multiple allowed) Section */}
+                  <div className="p-4 rounded-xl border border-violet-200 bg-violet-50/60">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-violet-700" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-violet-900">
+                          Tags (multiple allowed)
+                        </span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-800 border border-violet-200">
+                        {Array.isArray(selectedBook.tags) ? selectedBook.tags.length : 0} tag(s)
+                      </span>
+                    </div>
+                    {Array.isArray(selectedBook.tags) && selectedBook.tags.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {selectedBook.tags.map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white text-violet-800 border border-violet-200 shadow-2xs flex items-center gap-1"
+                          >
+                            <span className="text-violet-400 font-mono">#</span>
+                            <span>{tag}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic">No tags assigned to this book.</p>
+                    )}
                   </div>
 
                   {/* Serial Numbers Section */}
@@ -568,39 +609,64 @@ export const BorrowPage: React.FC = () => {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
                 <Info className="w-4 h-4 text-emerald-600" />
-                Quick Details
+                Book Specifications
               </h4>
               <div className="space-y-3">
-                {selectedBook.author && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <UserIcon className="w-4 h-4 text-amber-600" />
-                    <span className="font-medium text-slate-700">{selectedBook.author}</span>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Type:</span>
+                  <span className="font-bold text-violet-800 bg-violet-50 px-2 py-0.5 rounded-md border border-violet-200">
+                    {selectedBook.type_name || 'Unassigned'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Author:</span>
+                  <span className="font-semibold text-slate-800 text-right max-w-[190px] truncate" title={selectedBook.author || 'Not specified'}>
+                    {selectedBook.author || 'Not specified'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Date Published:</span>
+                  <span className="font-semibold text-slate-800">
+                    {selectedBook.published_date ? formatPublishedDate(selectedBook.published_date) : 'Not specified'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Location:</span>
+                  <span className="font-semibold text-slate-800 text-right max-w-[190px] truncate" title={selectedBook.location || 'Not specified'}>
+                    {selectedBook.location || 'Not specified'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Copyright Year:</span>
+                  <span className="font-semibold text-slate-800">
+                    {selectedBook.copyright_year ? `© ${selectedBook.copyright_year}` : 'Not specified'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">Publisher:</span>
+                  <span className="font-semibold text-slate-800 text-right max-w-[190px] truncate" title={selectedBook.publisher || 'Not specified'}>
+                    {selectedBook.publisher || 'Not specified'}
+                  </span>
+                </div>
+                <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500 font-medium">Tags:</span>
+                    <span className="text-[11px] text-slate-400 font-semibold">
+                      {Array.isArray(selectedBook.tags) ? `${selectedBook.tags.length} tag(s)` : '0'}
+                    </span>
                   </div>
-                )}
-                {selectedBook.publisher && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <Building2 className="w-4 h-4 text-blue-600" />
-                    <span className="font-medium text-slate-700">{selectedBook.publisher}</span>
-                  </div>
-                )}
-                {selectedBook.copyright_year && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <CalendarIcon className="w-4 h-4 text-purple-600" />
-                    <span className="font-medium text-slate-700">© {selectedBook.copyright_year}</span>
-                  </div>
-                )}
-                {selectedBook.location && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <MapPin className="w-4 h-4 text-emerald-600" />
-                    <span className="font-medium text-slate-700">{selectedBook.location}</span>
-                  </div>
-                )}
-                {selectedBook.published_date && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <CalendarIcon className="w-4 h-4 text-orange-600" />
-                    <span className="font-medium text-slate-700">Published: {selectedBook.published_date}</span>
-                  </div>
-                )}
+                  {Array.isArray(selectedBook.tags) && selectedBook.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {selectedBook.tags.map((t) => (
+                        <span key={t} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400 italic">None</span>
+                  )}
+                </div>
               </div>
             </div>
           )}
