@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, BookOpen, Inbox, BookmarkCheck, 
-  RotateCcw, Users, Settings, LogOut, Library, Menu, X, ExternalLink
+  RotateCcw, Users, Settings, LogOut, Menu, X, ExternalLink
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { toast } from 'sonner';
@@ -47,11 +47,13 @@ export const AdminLayout: React.FC = () => {
         {/* Sidebar Header */}
         <div className="h-16 px-6 border-b border-slate-200 flex items-center justify-between">
           <Link to="/admin/dashboard" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold shadow-sm">
-              <Library className="w-5 h-5" />
-            </div>
+            <img
+              src="/images/logo.png"
+              alt="School Logo"
+              className="w-9 h-9 rounded-xl object-contain shadow-sm"
+            />
             <div>
-              <span className="font-bold text-base text-slate-900">Talisay Admin</span>
+              <span className="font-bold text-base text-slate-900">Talisay City College Library</span>
               <span className="block text-[10px] uppercase font-bold text-emerald-600">Library Portal</span>
             </div>
           </Link>

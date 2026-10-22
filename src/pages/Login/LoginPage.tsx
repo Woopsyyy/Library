@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { dataService } from '../../services/dataService';
 import { toast } from 'sonner';
-import { Shield, KeyRound, User, Library, ArrowLeft } from 'lucide-react';
+import { Shield, KeyRound, User, ArrowLeft } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -64,11 +64,13 @@ export const LoginPage: React.FC = () => {
       <div className="w-full max-w-md space-y-6">
         {/* Header Branding */}
         <div className="text-center space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center text-white mx-auto shadow-md">
-            <Library className="w-8 h-8" />
-          </div>
+          <img
+            src="/images/logo.png"
+            alt="School Logo"
+            className="w-14 h-14 rounded-2xl object-contain mx-auto shadow-md"
+          />
           <h1 className="text-2xl font-black tracking-tight text-slate-900">
-            Talisay Library Login
+            Talisay City College Library Login
           </h1>
           <p className="text-xs text-slate-600 font-medium">
             Sign in with your username or School ID (e.g. 2026-1234).

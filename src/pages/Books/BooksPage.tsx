@@ -246,6 +246,7 @@ export const BooksPage: React.FC = () => {
   const [location, setLocation] = useState('');
   const [copyrightYear, setCopyrightYear] = useState('');
   const [publisher, setPublisher] = useState('');
+  const [accessionNumber, setAccessionNumber] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [totalCopies, setTotalCopies] = useState<number>(1);
   const [status, setStatus] = useState<BookStatus>('Available');
@@ -304,6 +305,7 @@ const { data: authors = [] } = useQuery({
     setTitle('');
     if (bookTypes.length > 0) setTypeId(bookTypes[0].id);
     resetMetaFields();
+    setAccessionNumber('');
     setTotalCopies(1);
     setCoverFile(null);
     setCoverPreview('');
@@ -319,6 +321,7 @@ const { data: authors = [] } = useQuery({
     setLocation(book.location || '');
     setCopyrightYear(book.copyright_year || '');
     setPublisher(book.publisher || '');
+    setAccessionNumber(book.accession_number || '');
     setSelectedTags(Array.isArray(book.tags) ? [...book.tags] : []);
     setTotalCopies(book.total_copies);
     setStatus(book.status);
@@ -327,7 +330,7 @@ const { data: authors = [] } = useQuery({
   };
 
   const addMutation = useMutation({
-    mutationFn: (data: { title: string; type_id: string; total_copies: number; author: string; published_date: string; location: string; copyright_year: string; publisher: string; tags: string[]; cover_file?: File | null }) =>
+    mutationFn: (data: { title: string; type_id: string; total_copies: number; author: string; published_date: string; location: string; copyright_year: string; publisher: string; accession_number: string; tags: string[]; cover_file?: File | null }) =>
       dataService.addBook(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
@@ -389,6 +392,7 @@ const { data: authors = [] } = useQuery({
       location,
       copyright_year: copyrightYear,
       publisher,
+      accession_number: accessionNumber,
       tags: selectedTags,
       cover_file: coverFile,
     });
@@ -409,6 +413,7 @@ const { data: authors = [] } = useQuery({
         location,
         copyright_year: copyrightYear,
         publisher,
+        accession_number: accessionNumber,
         tags: selectedTags,
         cover_file: coverFile,
       },
@@ -463,6 +468,7 @@ const { data: authors = [] } = useQuery({
               <tr>
                 <th className="px-2 py-3 w-8"></th>
                 <th className="px-4 py-3">Cover</th>
+                <th className="px-4 py-3">Accession No.</th>
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Author</th>
@@ -476,13 +482,13 @@ const { data: authors = [] } = useQuery({
             <tbody className="divide-y divide-slate-100 font-medium">
               {isLoading ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-8 text-slate-400">
+                  <td colSpan={12} className="text-center py-8 text-slate-400">
                     Loading books from database...
                   </td>
                 </tr>
               ) : filteredBooks.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-8 text-slate-400">
+                  <td colSpan={12} className="text-center py-8 text-slate-400">
                     No books found in catalog. Click "Add Book" to add one to Supabase database.
                   </td>
                 </tr>
@@ -514,6 +520,15 @@ const { data: authors = [] } = useQuery({
                         <div className="w-9 h-11 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-emerald-600">
                           <BookOpen className="w-5 h-5" />
                         </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-700 whitespace-nowrap">
+                      {book.accession_number ? (
+                        <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-mono">
+                          {book.accession_number}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 font-bold text-slate-900 max-w-xs truncate">{book.title}</td>
@@ -572,7 +587,7 @@ const { data: authors = [] } = useQuery({
                       </div>
                     </td>
                   </tr>
-                  {expandedBookId === book.id && <BookCopiesRow bookId={book.id} colSpan={10} />}
+                  {expandedBookId === book.id && <BookCopiesRow bookId={book.id} colSpan={11} />}
                   </React.Fragment>
                 ))
               )}
@@ -701,6 +716,20 @@ const { data: authors = [] } = useQuery({
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Accession Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. ACC-2024-001"
+                  value={accessionNumber}
+                  onChange={(e) => setAccessionNumber(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                />
+                <p className="text-[11px] text-slate-500 font-medium pt-0.5">
+                  Unique identifier for this book in the library catalog (optional).
+                </p>
               </div>
 
               <div className="space-y-1">
@@ -863,6 +892,20 @@ const { data: authors = [] } = useQuery({
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Accession Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. ACC-2024-001"
+                  value={accessionNumber}
+                  onChange={(e) => setAccessionNumber(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                />
+                <p className="text-[11px] text-slate-500 font-medium pt-0.5">
+                  Unique identifier for this book in the library catalog (optional).
+                </p>
               </div>
 
               <div className="space-y-1">

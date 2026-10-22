@@ -25,6 +25,7 @@ export interface Book {
   location?: string;
   copyright_year?: string;
   publisher?: string;
+  accession_number?: string;
   created_at?: string;
 }
 

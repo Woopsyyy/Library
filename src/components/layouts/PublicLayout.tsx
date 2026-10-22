@@ -23,12 +23,12 @@ export const PublicLayout: React.FC = () => {
           <Link to="/" className="flex items-center gap-3 group">
             <img 
               src="/images/logo.png" 
-              alt="Talisay Library Logo" 
+              alt="Talisay City College Library Logo" 
               className="w-10 h-10 rounded-xl object-contain bg-slate-100 p-1 border border-slate-200 shadow-sm group-hover:scale-105 transition-transform" 
             />
             <div>
               <span className="font-extrabold text-lg tracking-tight gradient-text">
-                Talisay Library
+                Talisay City College Library
               </span>
               <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-500">
                 Online Catalog & Borrowing
@@ -108,10 +108,10 @@ export const PublicLayout: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-emerald-600" />
-            <span className="font-semibold text-slate-700">Talisay Online Library Management System v1.0</span>
+            <span className="font-semibold text-slate-700">Talisay City College Library Management System v1.0</span>
           </div>
           <p className="text-xs text-slate-500">
-            &copy; {new Date().getFullYear()} Talisay Library. Designed for seamless student borrowing.
+            &copy; {new Date().getFullYear()} Talisay City College Library. Designed for seamless student borrowing.
           </p>
         </div>
       </footer>

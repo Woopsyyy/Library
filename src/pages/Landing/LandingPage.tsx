@@ -84,14 +84,14 @@ export const LandingPage: React.FC = () => {
             {/* Badge */}
             <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-xs font-bold bg-white text-emerald-800 border border-emerald-200 shadow-sm backdrop-blur-md">
               <img src={logoImg} alt="Talisay Logo" className="w-5 h-5 object-contain" />
-              <span className="tracking-wide">Talisay Online Library Management System</span>
+              <span className="tracking-wide">Talisay City College Library Management System</span>
               <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-spin" style={{ animationDuration: '6s' }} />
             </div>
 
             {/* Title */}
             <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black tracking-tight text-slate-900 leading-[1.08]">
               Welcome to <br className="hidden sm:block" />
-              <span className="gradient-text drop-shadow-xs">Talisay Online Library</span>
+              <span className="gradient-text drop-shadow-xs">Talisay City College Library</span>
             </h1>
 
             {/* Subtitle */}
@@ -153,9 +153,9 @@ export const LandingPage: React.FC = () => {
 
               {/* Floating chip: identity */}
               <div className="absolute -top-5 -right-3 sm:-right-6 glass-card rounded-2xl px-4 py-3 shadow-lg flex items-center gap-3 animate-float">
-                <img src={logoImg} alt="Talisay Library logo" className="w-10 h-10 object-contain rounded-lg" />
+                <img src={logoImg} alt="Talisay City College Library logo" className="w-10 h-10 object-contain rounded-lg" />
                 <div>
-                  <p className="text-sm font-extrabold text-slate-900 leading-tight">Talisay Library</p>
+                  <p className="text-sm font-extrabold text-slate-900 leading-tight">Talisay City College Library</p>
                   <p className="text-[11px] font-semibold text-emerald-700">Serving students daily</p>
                 </div>
               </div>
@@ -230,7 +230,7 @@ export const LandingPage: React.FC = () => {
         <div className="glass-card rounded-2xl p-6 sm:p-8 space-y-5 border border-emerald-200 shadow-md mt-14">
           <h3 className="text-lg font-bold text-emerald-700 flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-emerald-600" />
-            <span>Talisay Library Borrow Rules</span>
+            <span>Talisay City College Library Borrow Rules</span>
           </h3>
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-slate-700 font-medium">
             <li className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">

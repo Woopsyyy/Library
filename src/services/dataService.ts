@@ -591,11 +591,12 @@ export const dataService = {
         location: b.location || null,
         copyright_year: b.copyright_year || null,
         publisher: b.publisher || null,
+        accession_number: b.accession_number || null,
       };
     });
   },
 
-  async addBook(data: { title: string; type_id: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; location?: string; copyright_year?: string; publisher?: string; cover_file?: File | null }): Promise<Book> {
+  async addBook(data: { title: string; type_id: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; location?: string; copyright_year?: string; publisher?: string; accession_number?: string; cover_file?: File | null }): Promise<Book> {
     if (!data.title.trim()) throw new Error('Book title is required.');
     if (data.total_copies < 1) throw new Error('Total copies must be at least 1.');
 
@@ -626,6 +627,7 @@ export const dataService = {
       location: data.location?.trim() || undefined,
       copyright_year: data.copyright_year?.trim() || undefined,
       publisher: data.publisher?.trim() || undefined,
+      accession_number: data.accession_number?.trim() || undefined,
       ...(cover_url ? { cover_url } : {}),
     };
 
@@ -646,6 +648,7 @@ export const dataService = {
         location: inserted.location || undefined,
         copyright_year: inserted.copyright_year || undefined,
         publisher: inserted.publisher || undefined,
+        accession_number: inserted.accession_number || undefined,
       };
     }
 
@@ -709,6 +712,9 @@ export const dataService = {
     if (updates.publisher !== undefined) {
       bookUpdates.publisher = (updates.publisher || '').trim() || undefined;
     }
+    if (updates.accession_number !== undefined) {
+      bookUpdates.accession_number = (updates.accession_number || '').trim() || undefined;
+    }
 
     const updatedBook: Book = {
       ...books[index],
@@ -736,6 +742,7 @@ export const dataService = {
         location: updatedBook.location || undefined,
         copyright_year: updatedBook.copyright_year || undefined,
         publisher: updatedBook.publisher || undefined,
+        accession_number: updatedBook.accession_number || undefined,
         ...(updatedBook.cover_url ? { cover_url: updatedBook.cover_url } : {}),
       }).eq('id', id);
       if (error) throw new Error(error.message);
@@ -1171,6 +1178,73 @@ export const dataService = {
     return newUser;
   },
 
+  async addStudentUser(data: { school_id: string; full_name: string; course: string; year_level: string; section: string; password: string }): Promise<User> {
+    const cleanSchoolId = data.school_id.trim();
+    const cleanName = data.full_name.trim();
+    if (!cleanSchoolId || !cleanName || !data.course || !data.year_level || !data.section) {
+      throw new Error('All fields are required for student accounts.');
+    }
+    if (!isValidSchoolId(cleanSchoolId)) {
+      throw new Error('School ID must be in format XXXX-XXXX (e.g., 1234-5678).');
+    }
+    if (!data.password || data.password.length < 6) {
+      throw new Error('Password must be at least 6 characters.');
+    }
+
+    const conn = await validateDatabaseConnection();
+    if (!conn.connected && isSupabaseConfigured) {
+      throw new Error(conn.message || 'Database not connected.');
+    }
+
+    const newUser: User = {
+      id: 'usr-' + Date.now(),
+      account_type: 'student',
+      username: '',
+      school_id: cleanSchoolId,
+      full_name: cleanName,
+      role: 'Student',
+      status: 'Active',
+      course: data.course,
+      year_level: data.year_level,
+      section: data.section,
+      created_at: new Date().toISOString(),
+      password: await hashPassword(data.password),
+      plain_password: data.password,
+    };
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: inserted, error } = await supabase.from('users').insert([{
+        account_type: newUser.account_type,
+        username: newUser.username,
+        school_id: newUser.school_id,
+        full_name: newUser.full_name,
+        role: newUser.role,
+        status: newUser.status,
+        course: newUser.course,
+        year_level: newUser.year_level,
+        section: newUser.section,
+        created_at: newUser.created_at,
+        password: newUser.password,
+        plain_password: newUser.plain_password,
+      }]).select().single();
+      if (error) {
+        if (/duplicate|already exists/i.test(error.message)) throw new Error('This School ID is already registered.');
+        throw new Error(error.message);
+      }
+      logActivity('Student created', `Created student user "${cleanSchoolId}" (${cleanName})`);
+      return inserted;
+    }
+
+    const users = getLocalUsers();
+    if (users.some(u => u.school_id && u.school_id.toLowerCase() === cleanSchoolId.toLowerCase())) {
+      throw new Error('This School ID is already registered.');
+    }
+    users.unshift(newUser);
+    setLocal(STORAGE_KEYS.USERS, users);
+    logActivity('Student created', `Created student user "${cleanSchoolId}" (${cleanName})`);
+    return newUser;
+  },
+
   async updateAdminUser(id: string, updates: Partial<User>): Promise<User> {
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
@@ -1180,7 +1254,7 @@ export const dataService = {
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.from('users').update(updates).eq('id', id).select().single();
       if (error) throw new Error(error.message);
-      logActivity('Admin updated', `Updated admin user ID ${id}`);
+      logActivity('User updated', `Updated user ID ${id}`);
       return data;
     }
 
@@ -1191,17 +1265,17 @@ export const dataService = {
     const updated = { ...users[index], ...updates };
     users[index] = updated;
     setLocal(STORAGE_KEYS.USERS, users);
-    logActivity('Admin updated', `Updated admin user "${updated.username}"`);
+    logActivity('User updated', `Updated user "${updated.username || updated.school_id}"`);
     return updated;
   },
 
-  async disableAdminUser(id: string): Promise<void> {
+  async disableUser(id: string): Promise<void> {
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
       throw new Error(conn.message || 'Database not connected.');
     }
 
-    const users = await this.getAdminUsers();
+    const users = await this.getUsers();
     const target = users.find(u => u.id === id);
     if (!target) return;
 
@@ -1215,12 +1289,12 @@ export const dataService = {
       setLocal(STORAGE_KEYS.USERS, all);
     }
 
-    logActivity('Admin updated', `${newStatus === 'Disabled' ? 'Disabled' : 'Enabled'} user "${target.username}"`);
+    logActivity('User updated', `${newStatus === 'Disabled' ? 'Disabled' : 'Enabled'} user "${target.username || target.school_id}"`);
   },
 
-  async resetAdminPassword(username: string): Promise<string> {
-    const cleanUser = username.trim();
-    if (!cleanUser) throw new Error('Username is required.');
+  async resetUserPassword(identifier: string): Promise<string> {
+    const cleanIdentifier = identifier.trim();
+    if (!cleanIdentifier) throw new Error('Username or School ID is required.');
 
     const newPassword = generateTemporaryPassword();
     const passwordHash = await hashPassword(newPassword);
@@ -1233,22 +1307,25 @@ export const dataService = {
       const { error } = await supabase
         .from('users')
         .update({ password: passwordHash, plain_password: newPassword })
-        .eq('username', cleanUser);
+        .or(`username.eq.${cleanIdentifier},school_id.eq.${cleanIdentifier}`);
       if (error) throw new Error(error.message);
     } else {
       const users = getLocalUsers();
-      const index = users.findIndex(u => u.username.toLowerCase() === cleanUser.toLowerCase());
+      const index = users.findIndex(u =>
+        (u.username && u.username.toLowerCase() === cleanIdentifier.toLowerCase()) ||
+        (u.school_id && u.school_id.toLowerCase() === cleanIdentifier.toLowerCase())
+      );
       if (index !== -1) {
         users[index] = { ...users[index], password: passwordHash, plain_password: newPassword };
         setLocal(STORAGE_KEYS.USERS, users);
       }
     }
 
-    logActivity('Password reset', `Reset password for user "${cleanUser}"`);
+    logActivity('Password reset', `Reset password for user "${cleanIdentifier}"`);
     return newPassword;
   },
 
-  async deleteAdminUser(id: string): Promise<void> {
+  async deleteUser(id: string): Promise<void> {
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
       throw new Error(conn.message || 'Database not connected.');
@@ -1263,7 +1340,7 @@ export const dataService = {
       setLocal(STORAGE_KEYS.USERS, updated);
     }
 
-    logActivity('Admin deleted', `Deleted admin user ID ${id}`);
+    logActivity('User deleted', `Deleted user ID ${id}`);
   },
 
   // ACTIVITY LOGS

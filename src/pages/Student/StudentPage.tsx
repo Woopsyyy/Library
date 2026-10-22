@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
 import { toast } from 'sonner';
 import {
-  Bell, BookOpen, CalendarDays, CircleAlert, CircleCheck, Clock, Library, LogOut, Send,
+  Bell, BookOpen, CalendarDays, CircleAlert, CircleCheck, Clock, LogOut, Send,
 } from 'lucide-react';
 
 function formatDate(iso: string): string {
@@ -112,9 +112,11 @@ export const StudentPage: React.FC = () => {
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm">
-              <Library className="w-5 h-5" />
-            </div>
+            <img
+              src="/images/logo.png"
+              alt="School Logo"
+              className="w-9 h-9 rounded-xl object-contain shadow-sm"
+            />
             <div>
               <span className="font-extrabold text-base tracking-tight">My Library</span>
               <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-500">

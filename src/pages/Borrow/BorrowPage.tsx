@@ -22,7 +22,6 @@ import {
   CheckCircle2,
   Info,
   ExternalLink,
-  Library,
   Sparkles,
 } from 'lucide-react';
 
@@ -243,9 +242,11 @@ export const BorrowPage: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                  <Library className="w-5 h-5" />
-                </div>
+                <img
+                  src="/images/logo.png"
+                  alt="School Logo"
+                  className="w-10 h-10 rounded-xl object-contain"
+                />
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Select Book</h2>
                   <p className="text-xs text-slate-500">Choose from available titles</p>
