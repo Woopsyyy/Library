@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
 import { Book } from '../../types';
 import { toast } from 'sonner';
-import { BookOpen, Calendar, ArrowLeft, Send, User, Hash } from 'lucide-react';
+import { BookOpen, Calendar, ArrowLeft, Send, User, Hash, MapPin, Calendar as CalendarIcon, Building2 } from 'lucide-react';
 
 export const BorrowPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -268,6 +268,45 @@ export const BorrowPage: React.FC = () => {
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Title</span>
                     <p className="text-base font-bold text-slate-900">{selectedBook.title}</p>
                   </div>
+
+                  {selectedBook.author && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Author</span>
+                      <p className="text-xs font-medium text-slate-700">{selectedBook.author}</p>
+                    </div>
+                  )}
+
+                  {selectedBook.publisher && (
+                    <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
+                      <Building2 className="w-3 h-3 text-slate-400" />
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Publisher</span>
+                      <p className="text-xs font-medium text-slate-700 ml-5">{selectedBook.publisher}</p>
+                    </div>
+                  )}
+
+                  {selectedBook.copyright_year && (
+                    <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
+                      <CalendarIcon className="w-3 h-3 text-slate-400" />
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Copyright Year</span>
+                      <p className="text-xs font-medium text-slate-700 ml-5">{selectedBook.copyright_year}</p>
+                    </div>
+                  )}
+
+                  {selectedBook.location && (
+                    <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
+                      <MapPin className="w-3 h-3 text-slate-400" />
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Location</span>
+                      <p className="text-xs font-medium text-slate-700 ml-5">{selectedBook.location}</p>
+                    </div>
+                  )}
+
+                  {selectedBook.published_date && (
+                    <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
+                      <CalendarIcon className="w-3 h-3 text-slate-400" />
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Date Published</span>
+                      <p className="text-xs font-medium text-slate-700 ml-5">{selectedBook.published_date}</p>
+                    </div>
+                  )}
 
                   <div className="pt-2 border-t border-slate-100">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Type</span>
