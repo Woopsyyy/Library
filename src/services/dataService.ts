@@ -829,7 +829,7 @@ export const dataService = {
     }
 
     // Validation
-    if (!data.student_name.trim() || !data.student_id.trim() || !data.course.trim() || !data.year_level.trim() || !data.section.trim()) {
+    if (!data.student_name.trim() || !data.student_id.trim()) {
       throw new Error('Please complete all required fields.');
     }
     if (data.duration_days < 1 || data.duration_days > 3) {
