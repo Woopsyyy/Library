@@ -230,9 +230,11 @@ export const dataService = {
     return getLocal<BookType[]>(STORAGE_KEYS.TYPES, []);
   },
 
-  async addBookType(name: string): Promise<BookType> {
-    const cleanName = name.trim();
+  async addBookType(data: { name: string; borrow_duration_days?: number }): Promise<BookType> {
+    const cleanName = data.name.trim();
     if (!cleanName) throw new Error('Book type name is required.');
+    const duration = data.borrow_duration_days !== undefined ? Number(data.borrow_duration_days) : 7;
+    if (!Number.isInteger(duration) || duration < 1) throw new Error('Borrow duration must be at least 1 day.');
 
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
@@ -240,21 +242,56 @@ export const dataService = {
     }
 
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('book_types').insert([{ name: cleanName }]).select().single();
+      const { data: inserted, error } = await supabase.from('book_types').insert([{ name: cleanName, borrow_duration_days: duration }]).select().single();
       if (error) throw new Error(error.message);
-      logActivity('Course added', `Added course "${cleanName}"`);
-      return data;
+      logActivity('Course added', `Added course "${cleanName}" (${duration} days)`);
+      return inserted;
     }
 
     const types = getLocal<BookType[]>(STORAGE_KEYS.TYPES, []);
     if (types.some(t => t.name.toLowerCase() === cleanName.toLowerCase())) {
       throw new Error('Book type already exists.');
     }
-    const newType: BookType = { id: 'type-' + Date.now(), name: cleanName, created_at: new Date().toISOString() };
+    const newType: BookType = { id: 'type-' + Date.now(), name: cleanName, borrow_duration_days: duration, created_at: new Date().toISOString() };
     types.push(newType);
     setLocal(STORAGE_KEYS.TYPES, types);
-    logActivity('Course added', `Added course "${cleanName}"`);
+    logActivity('Course added', `Added course "${cleanName}" (${duration} days)`);
     return newType;
+  },
+
+  async updateBookType(id: string, updates: { name?: string; borrow_duration_days?: number }): Promise<void> {
+    const conn = await validateDatabaseConnection();
+    if (!conn.connected && isSupabaseConfigured) {
+      throw new Error(conn.message || 'Database not connected.');
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      const payload: { name?: string; borrow_duration_days?: number } = {};
+      if (updates.name !== undefined) payload.name = updates.name.trim();
+      if (updates.borrow_duration_days !== undefined) {
+        const duration = Number(updates.borrow_duration_days);
+        if (!Number.isInteger(duration) || duration < 1) throw new Error('Borrow duration must be at least 1 day.');
+        payload.borrow_duration_days = duration;
+      }
+      const { error } = await supabase.from('book_types').update(payload).eq('id', id);
+      if (error) throw new Error(error.message);
+      logActivity('Course updated', `Updated course ID ${id}`);
+      return;
+    }
+
+    const types = getLocal<BookType[]>(STORAGE_KEYS.TYPES, []);
+    const index = types.findIndex(t => t.id === id);
+    if (index === -1) throw new Error('Course not found.');
+    const updated = { ...types[index], ...updates };
+    if (updates.name !== undefined) updated.name = updates.name.trim();
+    if (updates.borrow_duration_days !== undefined) {
+      const duration = Number(updates.borrow_duration_days);
+      if (!Number.isInteger(duration) || duration < 1) throw new Error('Borrow duration must be at least 1 day.');
+      updated.borrow_duration_days = duration;
+    }
+    types[index] = updated;
+    setLocal(STORAGE_KEYS.TYPES, types);
+    logActivity('Course updated', `Updated course "${updated.name}"`);
   },
 
   async deleteBookType(id: string): Promise<void> {

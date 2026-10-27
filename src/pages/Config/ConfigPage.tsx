@@ -2,14 +2,18 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
 import { toast } from 'sonner';
-import { Plus, Trash2, Tag, User, Tags } from 'lucide-react';
+import { Plus, Trash2, Tag, User, Tags, Edit2, Save } from 'lucide-react';
 
 export const ConfigPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [newTypeName, setNewTypeName] = useState('');
+  const [newTypeDuration, setNewTypeDuration] = useState('7');
   const [newAuthorName, setNewAuthorName] = useState('');
   const [newTagName, setNewTagName] = useState('');
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [editingTypeName, setEditingTypeName] = useState('');
+  const [editingTypeDuration, setEditingTypeDuration] = useState('');
 
   // Queries
   const { data: bookTypes = [], isLoading: loadingTypes } = useQuery({
@@ -29,12 +33,13 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
 
   // Type Mutations
   const addTypeMutation = useMutation({
-    mutationFn: (name: string) => dataService.addBookType(name),
+    mutationFn: (data: { name: string; borrow_duration_days?: number }) => dataService.addBookType(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookTypes'] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
       toast.success('Course added.');
       setNewTypeName('');
+      setNewTypeDuration('7');
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to add course.');
@@ -47,11 +52,38 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
       queryClient.invalidateQueries({ queryKey: ['bookTypes'] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
       toast.success('Course removed.');
+      if (editingTypeId) setEditingTypeId(null);
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to delete course.');
     },
   });
+
+  const updateTypeMutation = useMutation({
+    mutationFn: (data: { id: string; name: string; borrow_duration_days: number }) => dataService.updateBookType(data.id, { name: data.name, borrow_duration_days: data.borrow_duration_days }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookTypes'] });
+      queryClient.invalidateQueries({ queryKey: ['books'] });
+      toast.success('Course updated.');
+      setEditingTypeId(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to update course.');
+    },
+  });
+
+  const handleUpdateType = (id: string) => {
+    if (!editingTypeName.trim()) {
+      toast.error('Course name is required.');
+      return;
+    }
+    const duration = Number(editingTypeDuration || '7');
+    if (!Number.isInteger(duration) || duration < 1) {
+      toast.error('Borrow duration must be at least 1 day.');
+      return;
+    }
+    updateTypeMutation.mutate({ id, name: editingTypeName, borrow_duration_days: duration });
+  };
 
   // Author Mutations
   const addAuthorMutation = useMutation({
@@ -111,7 +143,7 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
       toast.error('Course name is required.');
       return;
     }
-    addTypeMutation.mutate(newTypeName);
+    addTypeMutation.mutate({ name: newTypeName, borrow_duration_days: Number(newTypeDuration || '7') });
   };
 
   const handleAddAuthor = (e: React.FormEvent) => {
@@ -171,6 +203,33 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
             </button>
           </form>
 
+          {/* Add Type Form */}
+          <form onSubmit={handleAddType} className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Add a course or subject area..."
+              value={newTypeName}
+              onChange={(e) => setNewTypeName(e.target.value)}
+              className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
+            />
+            <input
+              type="number"
+              min="1"
+              placeholder="Days"
+              value={newTypeDuration}
+              onChange={(e) => setNewTypeDuration(e.target.value)}
+              className="w-16 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
+            />
+            <button
+              type="submit"
+              disabled={addTypeMutation.isPending}
+              className="px-4 py-2.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-60"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add</span>
+            </button>
+          </form>
+
           {/* Course List */}
           <div className="space-y-2 max-h-72 overflow-y-auto">
             {loadingTypes ? (
@@ -178,21 +237,74 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
             ) : bookTypes.length === 0 ? (
               <p className="text-xs text-slate-400 text-center py-4">No courses configured.</p>
             ) : (
-              bookTypes.map((type) => (
-                <div
-                  key={type.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition-colors"
-                >
-                  <span className="text-xs font-semibold text-slate-700">{type.name}</span>
-                  <button
-                    onClick={() => deleteTypeMutation.mutate(type.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                    title="Delete Course"
+              bookTypes.map((type) => {
+                const isEditing = editingTypeId === type.id;
+                return (
+                  <div
+                    key={type.id}
+                    className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition-colors"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))
+                    <div className="flex items-center gap-3 flex-1">
+                      {isEditing ? (
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <input
+                            type="text"
+                            value={editingTypeName}
+                            onChange={(e) => setEditingTypeName(e.target.value)}
+                            className="flex-1 px-2 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs focus:outline-none focus:border-emerald-400"
+                          />
+                          <input
+                            type="number"
+                            min="1"
+                            value={editingTypeDuration}
+                            onChange={(e) => setEditingTypeDuration(e.target.value)}
+                            className="w-16 px-2 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs focus:outline-none focus:border-emerald-400"
+                          />
+                          <span className="text-[10px] text-slate-400 font-medium">days</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-semibold text-slate-700 truncate">{type.name}</span>
+                          <span className="text-[10px] font-medium text-slate-400 bg-slate-200 px-2 py-0.5 rounded">{type.borrow_duration_days ?? 7} days</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 ml-2">
+                        {isEditing ? (
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateType(type.id)}
+                            disabled={updateTypeMutation.isPending}
+                            className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            title="Save Course"
+                          >
+                            <Save className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTypeId(type.id);
+                              setEditingTypeName(type.name);
+                              setEditingTypeDuration(String(type.borrow_duration_days ?? '7'));
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            title="Edit Course"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => deleteTypeMutation.mutate(type.id)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="Delete Course"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>

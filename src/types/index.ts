@@ -5,6 +5,7 @@ export type StudentBookListKind = 'favorite' | 'wishlist' | 'recommendation';
 export interface BookType {
   id: string;
   name: string;
+  borrow_duration_days?: number;
   created_at?: string;
 }
 
