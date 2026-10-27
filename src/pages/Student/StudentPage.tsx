@@ -270,7 +270,7 @@ export const StudentPage: React.FC = () => {
           const offset = offsets[kind];
           const loading = getLoadingForSection(kind);
           const error = getErrorForSection(kind);
-          const visible = books.length > 3 ? Array.from({ length: 3 }, (_, i) => books[(offset + i) % books.length]) : books;
+          const visible = books.length > 5 ? Array.from({ length: 5 }, (_, i) => books[(offset + i) % books.length]) : books;
           const headerClass = `px-6 py-5 border-b border-slate-100 flex items-center justify-between ${bg}`;
           const iconCircleClass = `w-10 h-10 rounded-xl flex items-center justify-center ${tone} ${bg.replace('-50', '-200')}`;
 
@@ -287,7 +287,7 @@ export const StudentPage: React.FC = () => {
                     <p className="text-xs text-slate-500 font-medium">{books.length} book{books.length !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
-                {books.length > 3 && (
+                {books.length > 5 && (
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -340,7 +340,7 @@ export const StudentPage: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div className="px-6 pb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="px-6 pb-8 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {visible.map((book) => (
                     <BookCard
                       key={book.id}
