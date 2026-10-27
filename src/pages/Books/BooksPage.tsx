@@ -100,7 +100,7 @@ const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, 
       queryClient.invalidateQueries({ queryKey: ['copies', bookId] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      toast.success(`New copy added! Calling number: ${newCopy.serial_number}`);
+      toast.success(`New copy added! Accession number: ${newCopy.serial_number}`);
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to add copy.');
@@ -114,17 +114,17 @@ const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, 
       queryClient.invalidateQueries({ queryKey: ['books'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     },
-    onError: (err: any) => toast.error(err.message || 'Failed to update calling number status.'),
+      onError: (err: any) => toast.error(err.message || 'Failed to update accession number status.'),
   });
 
   return (
     <tr className="bg-slate-50/70">
       <td colSpan={colSpan} className="px-4 py-3">
         {isLoading ? (
-          <p className="text-[11px] text-slate-400 font-medium pl-8">Loading calling numbers...</p>
+          <p className="text-[11px] text-slate-400 font-medium pl-8">Loading accession numbers...</p>
         ) : copies.length === 0 ? (
           <div className="pl-8 flex items-center gap-3">
-            <p className="text-[11px] text-slate-400 font-medium">No calling numbers yet.</p>
+            <p className="text-[11px] text-slate-400 font-medium">No accession numbers yet.</p>
             <button
               type="button"
               onClick={() => addCopyMutation.mutate()}
@@ -140,10 +140,10 @@ const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, 
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Calling numbers ({copies.length})
+                  Accession numbers ({copies.length})
                 </p>
                 <span className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  Auto-generated unique calling numbers
+                  Auto-generated unique accession numbers
                 </span>
               </div>
               <button
@@ -151,7 +151,7 @@ const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, 
                 onClick={() => addCopyMutation.mutate()}
                 disabled={addCopyMutation.isPending}
                 className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-xs transition-colors"
-                title="Automatically adds another copy with the next calling number"
+                title="Automatically adds another copy with the next accession number"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>{addCopyMutation.isPending ? 'Generating...' : '+ Add Copy'}</span>
@@ -481,7 +481,7 @@ const { data: authors = [] } = useQuery({
               <tr>
                 <th className="px-2 py-3 w-8"></th>
                 <th className="px-4 py-3">Cover</th>
-                <th className="px-4 py-3">Accession No.</th>
+                <th className="px-4 py-3">Calling No.</th>
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Course</th>
                 <th className="px-4 py-3">Author</th>
@@ -513,7 +513,7 @@ const { data: authors = [] } = useQuery({
                       <button
                         onClick={() => setExpandedBookId((prev) => (prev === book.id ? null : book.id))}
                         className="p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                        title={expandedBookId === book.id ? 'Hide calling numbers' : 'Show calling numbers'}
+                        title={expandedBookId === book.id ? 'Hide accession numbers' : 'Show accession numbers'}
                       >
                         {expandedBookId === book.id ? (
                           <ChevronDown className="w-4 h-4" />
@@ -732,7 +732,7 @@ const { data: authors = [] } = useQuery({
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Accession Number</label>
+                <label className="text-xs font-semibold text-slate-700">Calling Number</label>
                 <input
                   type="text"
                   placeholder="e.g. ACC-2024-001"
@@ -769,7 +769,7 @@ const { data: authors = [] } = useQuery({
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                 />
                 <p className="text-[11px] text-emerald-700 font-medium pt-0.5">
-                  ✨ Unique calling numbers will be automatically generated for all {totalCopies || 1} {totalCopies === 1 ? 'copy' : 'copies'}. No manual entry required.
+                  ✨ Unique accession numbers will be automatically generated for all {totalCopies || 1} {totalCopies === 1 ? 'copy' : 'copies'}. No manual entry required.
                 </p>
               </div>
 
@@ -908,7 +908,7 @@ const { data: authors = [] } = useQuery({
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Accession Number</label>
+                <label className="text-xs font-semibold text-slate-700">Calling Number</label>
                 <input
                   type="text"
                   placeholder="e.g. ACC-2024-001"
@@ -949,7 +949,7 @@ const { data: authors = [] } = useQuery({
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-700">Available Copies</label>
                   <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500 font-medium">
-                    Auto-managed from calling numbers — change Total Copies to add or remove copies.
+                    Auto-managed from accession numbers — change Total Copies to add or remove copies.
                   </div>
                 </div>
               </div>
