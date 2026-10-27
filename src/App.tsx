@@ -11,8 +11,6 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 // Public Pages
 import { LandingPage } from './pages/Landing/LandingPage';
 import { CatalogPage } from './pages/Catalog/CatalogPage';
-import { BorrowPage } from './pages/Borrow/BorrowPage';
-import { RequestSuccessPage } from './pages/RequestSuccess/RequestSuccessPage';
 
 // Auth Pages
 import { LoginPage } from './pages/Login/LoginPage';
@@ -21,9 +19,6 @@ import { StudentPage } from './pages/Student/StudentPage';
 import { ProtectedStudentRoute } from './components/ProtectedStudentRoute';
 import { DashboardPage } from './pages/Dashboard/DashboardPage';
 import { BooksPage } from './pages/Books/BooksPage';
-import { BorrowRequestsPage } from './pages/BorrowRequests/BorrowRequestsPage';
-import { BorrowedBooksPage } from './pages/BorrowedBooks/BorrowedBooksPage';
-import { ReturnsPage } from './pages/Returns/ReturnsPage';
 import { UsersPage } from './pages/Users/UsersPage';
 import { ConfigPage } from './pages/Config/ConfigPage';
 
@@ -46,8 +41,6 @@ export const App: React.FC = () => {
           <Route element={<PublicLayout />}>
             <Route path="/" element={<LandingPage />} />
             <Route path="/catalog" element={<CatalogPage />} />
-            <Route path="/borrow" element={<BorrowPage />} />
-            <Route path="/request-success" element={<RequestSuccessPage />} />
           </Route>
 
           {/* Single login for admins + students */}
@@ -68,9 +61,6 @@ export const App: React.FC = () => {
               <Route index element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="books" element={<BooksPage />} />
-              <Route path="requests" element={<BorrowRequestsPage />} />
-              <Route path="borrowed" element={<BorrowedBooksPage />} />
-              <Route path="returns" element={<ReturnsPage />} />
               <Route path="users" element={<UsersPage />} />
               <Route path="config" element={<ConfigPage />} />
             </Route>

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
 import {
   BookOpen, ArrowRight, Sparkles, Shield,
-  Layers, UserCheck, Clock, CheckCircle2, Zap, GraduationCap
+  Layers, Heart, BookmarkPlus, CheckCircle2, Zap, GraduationCap
 } from 'lucide-react';
 import heroImg from '@/assets/images/1.jpg';
 import secondaryImg from '@/assets/images/2.jpg';
@@ -43,14 +43,14 @@ export const LandingPage: React.FC = () => {
     {
       icon: Layers,
       value: bookTypes.length,
-      label: 'Book Categories',
+      label: 'Courses',
       tint: 'bg-cyan-50 text-cyan-700',
       hover: 'hover:border-cyan-300',
     },
     {
-      icon: Clock,
-      value: '1-3 Days',
-      label: 'Borrow Duration',
+      icon: Heart,
+      value: '3 Lists',
+      label: 'Save and Recommend',
       tint: 'bg-violet-50 text-violet-700',
       hover: 'hover:border-violet-300',
     },
@@ -97,7 +97,7 @@ export const LandingPage: React.FC = () => {
             {/* Subtitle */}
             <p className="text-base sm:text-lg text-slate-600 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
               Your gateway to academic literature, technical references, and educational series.
-              Search available copies and submit borrowing requests online.
+              Explore the collection, check calling number availability, and build your personal book lists.
             </p>
 
             {/* Call-to-Action Buttons */}
@@ -109,14 +109,6 @@ export const LandingPage: React.FC = () => {
                 <BookOpen className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
                 <span>Explore Book Catalog</span>
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              <button
-                onClick={() => navigate('/borrow')}
-                className="px-7 py-4 rounded-2xl font-bold text-slate-800 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm hover:shadow transition-all duration-300 flex items-center gap-2.5 text-sm hover:scale-105"
-              >
-                <UserCheck className="w-4 h-4 text-emerald-600" />
-                <span>Submit Borrow Request</span>
               </button>
 
               <button
@@ -198,19 +190,17 @@ export const LandingPage: React.FC = () => {
             </div>
             <h3 className="text-lg font-bold text-slate-900">Instant Online Catalog</h3>
             <p className="text-sm text-slate-600 leading-relaxed font-medium">
-              Search by title, filter by Agriculture, Technical, Educational, or Research types,
-              and check real-time stock copies before requesting.
+              Search by title, course, author, or tag, then view full book details and calling numbers.
             </p>
           </div>
 
           <div className="glass-card glass-card-hover p-6 rounded-2xl border border-slate-200 space-y-3 group">
             <div className="w-12 h-12 rounded-xl bg-teal-600 flex items-center justify-center text-white shadow-md group-hover:rotate-6 transition-transform">
-              <UserCheck className="w-6 h-6" />
+              <BookmarkPlus className="w-6 h-6" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900">Simple Student Workflow</h3>
+            <h3 className="text-lg font-bold text-slate-900">Personal Book Lists</h3>
             <p className="text-sm text-slate-600 leading-relaxed font-medium">
-              Select your desired borrowing period (1-3 days), fill in your student ID details,
-              and submit borrowing requests without needing to log in.
+              Sign in to save books to your favorites, wishlist, and recommendations. Your lists stay on your student dashboard.
             </p>
           </div>
 
@@ -220,34 +210,33 @@ export const LandingPage: React.FC = () => {
             </div>
             <h3 className="text-lg font-bold text-slate-900">Automated Management</h3>
             <p className="text-sm text-slate-600 leading-relaxed font-medium">
-              Librarians approve or reject requests, automatically track due dates and overdue loans,
-              replenish stock on return, and configure book series.
+              Librarians manage book records, courses, and each physical copy's available or unavailable status.
             </p>
           </div>
         </div>
 
-        {/* Borrow Rules Info Section */}
+        {/* Student Lists Info Section */}
         <div className="glass-card rounded-2xl p-6 sm:p-8 space-y-5 border border-emerald-200 shadow-md mt-14">
           <h3 className="text-lg font-bold text-emerald-700 flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-emerald-600" />
-            <span>Talisay City College Library Borrow Rules</span>
+            <span>Make the Catalog Yours</span>
           </h3>
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-slate-700 font-medium">
             <li className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
-              <strong className="block text-slate-900 font-bold">Max Duration:</strong>
-              Borrow period is between 1 to 3 calendar days max.
+              <strong className="block text-slate-900 font-bold">Favorites:</strong>
+              Keep the books you like close at hand.
             </li>
             <li className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
-              <strong className="block text-slate-900 font-bold">Duplicate Policy:</strong>
-              Students cannot submit multiple pending requests for the same book.
+              <strong className="block text-slate-900 font-bold">Wishlist:</strong>
+              Save titles you want to explore later.
             </li>
             <li className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
-              <strong className="block text-slate-900 font-bold">Inventory Tracking:</strong>
-              Copies are automatically reserved once an admin approves the request.
+              <strong className="block text-slate-900 font-bold">Recommendations:</strong>
+              Collect books you recommend or want to highlight.
             </li>
             <li className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
-              <strong className="block text-slate-900 font-bold">Approval Workflow:</strong>
-              Requests remain in 'Pending' status until approved by a librarian.
+              <strong className="block text-slate-900 font-bold">Availability:</strong>
+              Check the status of each calling number in book details.
             </li>
           </ul>
         </div>

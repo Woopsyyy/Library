@@ -25,9 +25,9 @@ export const LoginPage: React.FC = () => {
       // Single lookup in users — admins go to the admin page, students to theirs.
       const user = await dataService.loginUser(identifier, password);
       if (from) {
-        // User was sent here by a guard (e.g. clicked Borrow while logged out) — send them back.
+        // Return users to the page that required authentication.
         // Admins should never land on student-only pages, so keep them on the dashboard instead.
-        if (user.account_type === 'admin' && (from.startsWith('/borrow') || from.startsWith('/student'))) {
+        if (user.account_type === 'admin' && from.startsWith('/student')) {
           toast.success('Login successful.');
           navigate('/admin/dashboard', { replace: true });
         } else {

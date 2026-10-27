@@ -1,6 +1,4 @@
-import {
-  Book, BookType, Author, Tag, BookCopy, BorrowRequest, BorrowRecord, BorrowRecordStatus, ReturnRecord, User, AccountType, ActivityLog
-} from '../types';
+import { Book, BookType, Author, Tag, BookCopy, StudentBookListKind, User, AccountType, ActivityLog } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 // Local storage keys for fallback cache
@@ -10,9 +8,7 @@ const STORAGE_KEYS = {
   TAGS: 'talisay_tags',
   COPIES: 'talisay_book_copies',
   BOOKS: 'talisay_books',
-  REQUESTS: 'talisay_borrow_requests',
-  RECORDS: 'talisay_borrow_records',
-  RETURNS: 'talisay_returns',
+  STUDENT_BOOK_LISTS: 'talisay_student_book_lists',
   USERS: 'talisay_users',
   LOGS: 'talisay_activity_logs',
   // Single session for both account types; AUTH/STUDENT_AUTH are legacy keys (read-only fallback).
@@ -124,7 +120,7 @@ export async function validateDatabaseConnection(): Promise<{ connected: boolean
     if (error) {
       return { 
         connected: false, 
-        message: `Database error: ${error.message}. Please run supabase.txt in your Supabase SQL editor.` 
+        message: `Database error: ${error.message}. Please run supabase-complete.sql and supabase-feature-migration.sql in your Supabase SQL editor.`
       };
     }
     return { connected: true };
@@ -184,18 +180,6 @@ function generateTemporaryPassword(length = 8): string {
   return Array.from(values, v => chars[v % chars.length]).join('');
 }
 
-// Generate a unique, formatted inquiry number for a borrow request.
-function generateInquiryNumber(): string {
-  const date = new Date();
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
-  const min = String(date.getMinutes()).padStart(2, '0');
-  const ss = String(date.getSeconds()).padStart(2, '0');
-  return `TLB-${yyyy}${mm}${dd}-${hh}${min}${ss}`;
-}
-
 const BOOK_COVER_BUCKET = 'book-covers';
 const MAX_COVER_SIZE = 5 * 1024 * 1024;
 
@@ -252,13 +236,13 @@ export const dataService = {
 
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
-      throw new Error(conn.message || 'Database not connected. Please run supabase.txt script.');
+      throw new Error(conn.message || 'Database not connected. Please run the Supabase setup and feature migration scripts.');
     }
 
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.from('book_types').insert([{ name: cleanName }]).select().single();
       if (error) throw new Error(error.message);
-      logActivity('Type added', `Added book type "${cleanName}"`);
+      logActivity('Course added', `Added course "${cleanName}"`);
       return data;
     }
 
@@ -269,7 +253,7 @@ export const dataService = {
     const newType: BookType = { id: 'type-' + Date.now(), name: cleanName, created_at: new Date().toISOString() };
     types.push(newType);
     setLocal(STORAGE_KEYS.TYPES, types);
-    logActivity('Type added', `Added book type "${cleanName}"`);
+    logActivity('Course added', `Added course "${cleanName}"`);
     return newType;
   },
 
@@ -282,7 +266,7 @@ export const dataService = {
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('book_types').delete().eq('id', id);
       if (error) throw new Error(error.message);
-      logActivity('Type removed', `Deleted book type ID ${id}`);
+      logActivity('Course removed', `Deleted course ID ${id}`);
       return;
     }
 
@@ -290,7 +274,7 @@ export const dataService = {
     const target = types.find(t => t.id === id);
     const updated = types.filter(t => t.id !== id);
     setLocal(STORAGE_KEYS.TYPES, updated);
-    logActivity('Type removed', `Deleted book type "${target?.name || id}"`);
+    logActivity('Course removed', `Deleted course "${target?.name || id}"`);
   },
 
   // AUTHORS
@@ -493,7 +477,17 @@ export const dataService = {
     return raw;
   },
 
-  async setCopyStatus(copyId: string, status: 'Available' | 'Borrowed'): Promise<void> {
+  async setCopyStatus(copyId: string, status: 'Available' | 'Unavailable'): Promise<void> {
+    const books = await this.getBooks();
+    let targetBook: Book | undefined;
+    for (const book of books) {
+      if ((await this.getRawBookCopies(book.id)).some(copy => copy.id === copyId)) {
+        targetBook = book;
+        break;
+      }
+    }
+    if (!targetBook) throw new Error('Calling number not found.');
+
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('book_copies').update({ status }).eq('id', copyId);
       if (error) throw new Error(error.message);
@@ -503,15 +497,30 @@ export const dataService = {
       );
       setLocal(STORAGE_KEYS.COPIES, all);
     }
+    const copies = await this.getRawBookCopies(targetBook.id);
+    const available = copies.filter(copy => copy.status === 'Available').length;
+    const localBooks = getLocal<Book[]>(STORAGE_KEYS.BOOKS, []);
+    const localBook = localBooks.find(book => book.id === targetBook!.id);
+    if (localBook) {
+      localBook.available_copies = available;
+      localBook.status = available === 0 ? 'Unavailable' : 'Available';
+      setLocal(STORAGE_KEYS.BOOKS, localBooks);
+    }
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('books').update({
+        available_copies: available,
+        status: available === 0 ? 'Unavailable' : 'Available',
+      }).eq('id', targetBook.id);
+      if (error) throw new Error(error.message);
+    }
   },
 
-  // Grow/shrink the copy list to match `total`. Never removes borrowed copies —
-  // throws when total is set below the borrowed count.
+  // Grow/shrink the copy list to match `total`. Unavailable copies are retained.
   async reconcileCopies(bookId: string, total: number): Promise<{ total: number; available: number }> {
     const copies = await this.getRawBookCopies(bookId);
-    const borrowed = copies.filter(c => c.status === 'Borrowed').length;
-    if (total < borrowed) {
-      throw new Error(`Cannot set total below ${borrowed} (copies are currently borrowed).`);
+    const unavailable = copies.filter(c => c.status === 'Unavailable').length;
+    if (total < unavailable) {
+      throw new Error(`Cannot set total below ${unavailable} (copies are currently unavailable).`);
     }
     let next = this.nextCopyNumber(copies);
 
@@ -537,7 +546,7 @@ export const dataService = {
       const removeCount = copies.length - total;
       const removable = copies.filter(c => c.status === 'Available').slice(0, removeCount);
       if (removable.length < removeCount) {
-        throw new Error(`Cannot remove copies — only ${removable.length} are available (rest are borrowed).`);
+        throw new Error(`Cannot remove copies — only ${removable.length} are available (rest are unavailable).`);
       }
       const ids = new Set(removable.map(c => c.id));
       if (isSupabaseConfigured && supabase) {
@@ -602,7 +611,7 @@ export const dataService = {
 
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
-      throw new Error(conn.message || 'Database connection error. Please run supabase.txt SQL script.');
+      throw new Error(conn.message || 'Database connection error. Please run the Supabase setup and feature migration scripts.');
     }
 
     const total = Number(data.total_copies);
@@ -724,8 +733,8 @@ export const dataService = {
     };
     
     if (updatedBook.available_copies <= 0) {
-      updatedBook.status = 'Borrowed';
-    } else if (updatedBook.status === 'Borrowed' && updatedBook.available_copies > 0) {
+      updatedBook.status = 'Unavailable';
+    } else if (updatedBook.status === 'Unavailable' && updatedBook.available_copies > 0) {
       updatedBook.status = 'Available';
     }
 
@@ -775,334 +784,48 @@ export const dataService = {
     logActivity('Book deleted', `Deleted book "${target?.title || id}"`);
   },
 
-  // BORROW REQUESTS
-  async getBorrowRequests(): Promise<BorrowRequest[]> {
+  async getStudentBookLists(studentId: string): Promise<Record<StudentBookListKind, Book[]>> {
+    const lists: Record<StudentBookListKind, Book[]> = { favorite: [], wishlist: [], recommendation: [] };
+    if (!studentId) return lists;
+    let entries: { book_id: string; list_kind: StudentBookListKind }[] = [];
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('borrow_requests').select('*').order('request_date', { ascending: false });
-      if (!error && data) return data;
-    }
-    return getLocal<BorrowRequest[]>(STORAGE_KEYS.REQUESTS, []);
-  },
-
-  async getBorrowRequestByInquiryNumber(inquiryNumber: string): Promise<BorrowRequest> {
-    const clean = inquiryNumber.trim().toUpperCase();
-    if (!clean) throw new Error('Please enter your inquiry number.');
-
-    let requests: BorrowRequest[] = [];
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('borrow_requests')
-        .select('*')
-        .ilike('inquiry_number', clean);
-      if (!error && data && data.length > 0) requests = data;
-    }
-    if (requests.length === 0) {
-      requests = getLocal<BorrowRequest[]>(STORAGE_KEYS.REQUESTS, []);
-    }
-
-    const found = requests.find(r => r.inquiry_number?.toUpperCase() === clean);
-    if (!found) throw new Error('No request found with that inquiry number.');
-
-    const books = await this.getBooks();
-    const book = books.find(b => b.id === found.book_id);
-    return {
-      ...found,
-      book_title: found.book_title || book?.title || 'Book',
-      book_type: found.book_type || book?.type_name,
-    };
-  },
-
-  async submitBorrowRequest(data: {
-    student_name: string;
-    student_id: string;
-    course: string;
-    year_level: string;
-    section: string;
-    book_id: string;
-    serial_number?: string;
-    duration_days: number;
-  }): Promise<BorrowRequest> {
-    // Validate database connection first!
-    const conn = await validateDatabaseConnection();
-    if (!conn.connected && isSupabaseConfigured) {
-      throw new Error(conn.message || 'Database connection error. Please ensure Supabase tables are created.');
-    }
-
-    // Validation
-    if (!data.student_name.trim() || !data.student_id.trim()) {
-      throw new Error('Please complete all required fields.');
-    }
-    if (data.duration_days < 1 || data.duration_days > 3) {
-      throw new Error('Borrow duration cannot exceed 3 days.');
-    }
-
-    const books = await this.getBooks();
-    const targetBook = books.find(b => b.id === data.book_id);
-    if (!targetBook) throw new Error('Selected book not found.');
-
-    const requests = await this.getBorrowRequests();
-    
-    // Check duplicate request rule
-    const existingPending = requests.find(
-      r => r.student_id.toLowerCase() === data.student_id.toLowerCase().trim() && 
-           r.book_id === data.book_id && 
-           r.status === 'Pending'
-    );
-    if (existingPending) {
-      throw new Error('You already have a pending request.');
-    }
-
-    const newReq: BorrowRequest = {
-      id: 'req-' + Date.now(),
-      inquiry_number: generateInquiryNumber(),
-      student_name: data.student_name.trim(),
-      student_id: data.student_id.trim(),
-      course: data.course.trim(),
-      year_level: data.year_level,
-      section: data.section.trim(),
-      book_id: data.book_id,
-      book_title: targetBook.title,
-      book_type: targetBook.type_name,
-      serial_number: data.serial_number?.trim() || undefined,
-      duration_days: Number(data.duration_days),
-      request_date: new Date().toISOString(),
-      status: 'Pending',
-    };
-
-    if (isSupabaseConfigured && supabase) {
-      const reqForDb = {
-        inquiry_number: newReq.inquiry_number,
-        student_name: newReq.student_name,
-        student_id: newReq.student_id,
-        course: newReq.course,
-        year_level: newReq.year_level,
-        section: newReq.section,
-        book_id: newReq.book_id,
-        serial_number: newReq.serial_number,
-        duration_days: newReq.duration_days,
-        request_date: newReq.request_date,
-        status: newReq.status,
-      };
-      const { data: inserted, error } = await supabase.from('borrow_requests').insert([reqForDb]).select().single();
-      if (error) throw new Error(`Supabase Error: ${error.message}`);
-      logActivity('Borrow Request Submitted', `Student ${data.student_name} requested "${targetBook.title}" (Serial: ${newReq.serial_number || 'Auto-assign'})`);
-      return inserted;
-    }
-
-    requests.unshift(newReq);
-    setLocal(STORAGE_KEYS.REQUESTS, requests);
-    logActivity('Borrow Request Submitted', `Student ${data.student_name} requested "${targetBook.title}" (Serial: ${newReq.serial_number || 'Auto-assign'})`);
-    return newReq;
-  },
-
-  async approveBorrowRequest(requestId: string): Promise<void> {
-    const conn = await validateDatabaseConnection();
-    if (!conn.connected && isSupabaseConfigured) {
-      throw new Error(conn.message || 'Database not connected.');
-    }
-
-    const requests = await this.getBorrowRequests();
-    const req = requests.find(r => r.id === requestId);
-    if (!req) throw new Error('Borrow request not found.');
-    if (req.status !== 'Pending') throw new Error('Request has already been processed.');
-
-    const books = await this.getBooks();
-    const targetBook = books.find(b => b.id === req.book_id);
-
-    // Assign specific physical copy by serial number if requested, or first available copy
-    const allCopies = await this.getBookCopies(req.book_id);
-    let assigned = req.serial_number
-      ? allCopies.find(c => c.serial_number === req.serial_number && c.status === 'Available')
-      : undefined;
-
-    if (!assigned) {
-      const availableCopies = allCopies
-        .filter(c => c.status === 'Available')
-        .sort((a, b) => a.serial_number.localeCompare(b.serial_number));
-      if (availableCopies.length === 0) {
-        throw new Error('No available copies — every serial of this book is currently lent out.');
-      }
-      assigned = availableCopies[0];
-    }
-    const availableLeft = allCopies.filter(c => c.status === 'Available' && c.id !== assigned!.id).length;
-    const newAvailableCopies = availableLeft;
-    const newBookStatus = newAvailableCopies === 0 ? 'Borrowed' : (targetBook?.status || 'Available');
-
-    const borrowDate = new Date();
-    const dueDate = new Date();
-    dueDate.setDate(borrowDate.getDate() + req.duration_days);
-
-    const newRecord: BorrowRecord = {
-      id: 'rec-' + Date.now(),
-      request_id: req.id,
-      student_name: req.student_name,
-      student_id: req.student_id,
-      book_id: req.book_id,
-      book_title: req.book_title || targetBook?.title || 'Book',
-      serial_number: assigned.serial_number,
-      borrow_date: borrowDate.toISOString(),
-      due_date: dueDate.toISOString(),
-      status: 'Borrowed',
-    };
-
-    if (isSupabaseConfigured && supabase) {
-      await this.setCopyStatus(assigned.id, 'Borrowed');
-      const { error: reqErr } = await supabase.from('borrow_requests').update({ status: 'Approved' }).eq('id', requestId);
-      if (reqErr) throw new Error(reqErr.message);
-
-      const { error: recErr } = await supabase.from('borrow_records').insert([{
-        request_id: newRecord.request_id,
-        student_name: newRecord.student_name,
-        student_id: newRecord.student_id,
-        book_id: newRecord.book_id,
-        serial_number: newRecord.serial_number,
-        borrow_date: newRecord.borrow_date,
-        due_date: newRecord.due_date,
-        status: newRecord.status,
-      }]);
-      if (recErr) throw new Error(recErr.message);
-
-      if (targetBook) {
-        await supabase.from('books').update({
-          available_copies: newAvailableCopies,
-          status: newBookStatus
-        }).eq('id', req.book_id);
-      }
-    } else {
-      await this.setCopyStatus(assigned.id, 'Borrowed');
-      req.status = 'Approved';
-      setLocal(STORAGE_KEYS.REQUESTS, requests);
-      const records = getLocal<BorrowRecord[]>(STORAGE_KEYS.RECORDS, []);
-      records.unshift(newRecord);
-      setLocal(STORAGE_KEYS.RECORDS, records);
-    }
-
-    logActivity('Borrow approved', `Approved request for ${req.student_name} ("${newRecord.book_title}", serial ${assigned.serial_number})`);
-  },
-
-  async rejectBorrowRequest(requestId: string): Promise<void> {
-    const conn = await validateDatabaseConnection();
-    if (!conn.connected && isSupabaseConfigured) {
-      throw new Error(conn.message || 'Database not connected.');
-    }
-
-    if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('borrow_requests').update({ status: 'Rejected' }).eq('id', requestId);
+      const { data, error } = await supabase.from('student_book_lists').select('book_id,list_kind').eq('student_id', studentId);
       if (error) throw new Error(error.message);
+      entries = (data || []) as typeof entries;
     } else {
-      const requests = getLocal<BorrowRequest[]>(STORAGE_KEYS.REQUESTS, []);
-      const req = requests.find(r => r.id === requestId);
-      if (req) {
-        req.status = 'Rejected';
-        setLocal(STORAGE_KEYS.REQUESTS, requests);
-      }
+      entries = getLocal<{ student_id: string; book_id: string; list_kind: StudentBookListKind }[]>(STORAGE_KEYS.STUDENT_BOOK_LISTS, [])
+        .filter(entry => entry.student_id === studentId);
     }
-
-    logActivity('Borrow rejected', `Rejected request ID ${requestId}`);
-  },
-
-  // BORROWED BOOKS & RETURNS
-  async getBorrowedBooks(): Promise<BorrowRecord[]> {
-    let records: BorrowRecord[] = [];
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('borrow_records').select('*').order('borrow_date', { ascending: false });
-      if (!error && data) records = data;
-    }
-    if (records.length === 0) {
-      records = getLocal<BorrowRecord[]>(STORAGE_KEYS.RECORDS, []);
-    }
-
-    const now = new Date();
-    return records.map(rec => {
-      if (rec.status === 'Borrowed') {
-        const due = new Date(rec.due_date);
-        const diffTime = due.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        let status: BorrowRecordStatus = rec.status;
-        if (diffDays < 0) {
-          status = 'Overdue';
-        }
-        return {
-          ...rec,
-          status,
-          remaining_days: diffDays,
-        };
-      }
-      return rec;
-    });
-  },
-
-  async markReturned(recordId: string): Promise<void> {
-    const conn = await validateDatabaseConnection();
-    if (!conn.connected && isSupabaseConfigured) {
-      throw new Error(conn.message || 'Database not connected.');
-    }
-
-    const records = await this.getBorrowedBooks();
-    const rec = records.find(r => r.id === recordId);
-    if (!rec) throw new Error('Borrow record not found.');
-
     const books = await this.getBooks();
-    const targetBook = books.find(b => b.id === rec.book_id);
-
-    // Free the exact physical copy that was lent out.
-    if (rec.serial_number) {
-      const copy = (await this.getBookCopies(rec.book_id)).find(c => c.serial_number === rec.serial_number);
-      if (copy) await this.setCopyStatus(copy.id, 'Available');
+    for (const entry of entries) {
+      const book = books.find(item => item.id === entry.book_id);
+      if (book) lists[entry.list_kind].push(book);
     }
-    const freshCopies = await this.getBookCopies(rec.book_id);
-    const newAvail = freshCopies.filter(c => c.status === 'Available').length;
-
-    const newReturn: ReturnRecord = {
-      id: 'ret-' + Date.now(),
-      record_id: rec.id,
-      student_name: rec.student_name,
-      book_title: rec.book_title || 'Book',
-      serial_number: rec.serial_number || '',
-      borrow_date: rec.borrow_date,
-      return_date: new Date().toISOString(),
-      status: 'Returned',
-    };
-
-    if (isSupabaseConfigured && supabase) {
-      const { error: recErr } = await supabase.from('borrow_records').update({ status: 'Returned' }).eq('id', recordId);
-      if (recErr) throw new Error(recErr.message);
-
-      const { error: retErr } = await supabase.from('returns').insert([{
-        record_id: newReturn.record_id,
-        student_name: newReturn.student_name,
-        book_title: newReturn.book_title,
-        serial_number: newReturn.serial_number,
-        borrow_date: newReturn.borrow_date,
-        return_date: newReturn.return_date,
-        status: newReturn.status,
-      }]);
-      if (retErr) throw new Error(retErr.message);
-
-      if (targetBook) {
-        await supabase.from('books').update({ 
-          available_copies: newAvail, 
-          status: 'Available' 
-        }).eq('id', rec.book_id);
-      }
-    } else {
-      rec.status = 'Returned';
-      setLocal(STORAGE_KEYS.RECORDS, records);
-      const returns = getLocal<ReturnRecord[]>(STORAGE_KEYS.RETURNS, []);
-      returns.unshift(newReturn);
-      setLocal(STORAGE_KEYS.RETURNS, returns);
-    }
-
-    logActivity('Book returned', `Returned "${newReturn.book_title}" borrowed by ${rec.student_name}`);
+    return lists;
   },
 
-  async getReturns(): Promise<ReturnRecord[]> {
+  async toggleStudentBookList(studentId: string, bookId: string, listKind: StudentBookListKind): Promise<void> {
+    if (!studentId) throw new Error('Sign in as a student to save books.');
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('returns').select('*').order('return_date', { ascending: false });
-      if (!error && data) return data;
+      const { data, error } = await supabase.from('student_book_lists').select('id')
+        .eq('student_id', studentId).eq('book_id', bookId).eq('list_kind', listKind).maybeSingle();
+      if (error) throw new Error(error.message);
+      if (data) {
+        const { error: deleteError } = await supabase.from('student_book_lists').delete().eq('id', data.id);
+        if (deleteError) throw new Error(deleteError.message);
+      } else {
+        const { error: insertError } = await supabase.from('student_book_lists').insert({
+          student_id: studentId, book_id: bookId, list_kind: listKind,
+        });
+        if (insertError) throw new Error(insertError.message);
+      }
+      return;
     }
-    return getLocal<ReturnRecord[]>(STORAGE_KEYS.RETURNS, []);
+    const entries = getLocal<{ student_id: string; book_id: string; list_kind: StudentBookListKind }[]>(STORAGE_KEYS.STUDENT_BOOK_LISTS, []);
+    const index = entries.findIndex(entry => entry.student_id === studentId && entry.book_id === bookId && entry.list_kind === listKind);
+    if (index >= 0) entries.splice(index, 1);
+    else entries.push({ student_id: studentId, book_id: bookId, list_kind: listKind });
+    setLocal(STORAGE_KEYS.STUDENT_BOOK_LISTS, entries);
   },
 
   // USERS MANAGEMENT (single "users" table for admins + students)
@@ -1352,37 +1075,13 @@ export const dataService = {
     return getLocal<ActivityLog[]>(STORAGE_KEYS.LOGS, []);
   },
 
-  // DASHBOARD STATS WITH DEFENSIVE NUMBER CALCULATIONS
   async getDashboardStats() {
     const books = await this.getBooks();
-    const requests = await this.getBorrowRequests();
-    const records = await this.getBorrowedBooks();
     const users = await this.getAdminUsers();
-
-    // Safeguard against NaN or string types
-    const totalBooks = books.reduce((acc, b) => {
-      const val = Number(b.total_copies);
-      return acc + (isNaN(val) ? 0 : val);
-    }, 0);
-
-    const availableBooks = books.reduce((acc, b) => {
-      const val = Number(b.available_copies);
-      return acc + (isNaN(val) ? 0 : val);
-    }, 0);
-
-    const borrowedBooks = records.filter(r => r.status === 'Borrowed' || r.status === 'Overdue').length;
-    const pendingRequests = requests.filter(r => r.status === 'Pending').length;
-    const overdueBooks = records.filter(r => r.status === 'Overdue' || (r.status === 'Borrowed' && r.remaining_days !== undefined && r.remaining_days < 0)).length;
-    const adminUsersCount = users.filter(u => u.status === 'Active').length;
-
-    return {
-      totalBooks,
-      availableBooks,
-      borrowedBooks,
-      pendingRequests,
-      overdueBooks,
-      adminUsersCount,
-    };
+    const totalBooks = books.reduce((sum, book) => sum + Number(book.total_copies || 0), 0);
+    const availableBooks = books.reduce((sum, book) => sum + Number(book.available_copies || 0), 0);
+    const adminUsersCount = users.filter(user => user.status === 'Active').length;
+    return { totalBooks, availableBooks, adminUsersCount };
   },
 
   // UNIFIED LOGIN — one identifier (username or School ID), routed by role.
@@ -1394,7 +1093,7 @@ export const dataService = {
 
     const conn = await validateDatabaseConnection();
     if (!conn.connected && isSupabaseConfigured) {
-      throw new Error(conn.message || 'Database connection error. Please run supabase.txt SQL script in Supabase.');
+      throw new Error(conn.message || 'Database connection error. Please run the Supabase setup and feature migration scripts.');
     }
 
     const users = await this.getUsers();

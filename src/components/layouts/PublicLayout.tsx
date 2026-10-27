@@ -31,7 +31,7 @@ export const PublicLayout: React.FC = () => {
                 Talisay City College Library
               </span>
               <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-500">
-                Online Catalog & Borrowing
+                Online Library Catalog
               </span>
             </div>
           </Link>
@@ -111,7 +111,7 @@ export const PublicLayout: React.FC = () => {
             <span className="font-semibold text-slate-700">Talisay City College Library Management System v1.0</span>
           </div>
           <p className="text-xs text-slate-500">
-            &copy; {new Date().getFullYear()} Talisay City College Library. Designed for seamless student borrowing.
+            &copy; {new Date().getFullYear()} Talisay City College Library. Browse, save, and recommend books.
           </p>
         </div>
       </footer>

@@ -33,11 +33,11 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookTypes'] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
-      toast.success('Type added.');
+      toast.success('Course added.');
       setNewTypeName('');
     },
     onError: (err: any) => {
-      toast.error(err.message || 'Failed to add type.');
+      toast.error(err.message || 'Failed to add course.');
     },
   });
 
@@ -46,10 +46,10 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookTypes'] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
-      toast.success('Type removed.');
+      toast.success('Course removed.');
     },
     onError: (err: any) => {
-      toast.error(err.message || 'Failed to delete type.');
+      toast.error(err.message || 'Failed to delete course.');
     },
   });
 
@@ -108,7 +108,7 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
   const handleAddType = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTypeName.trim()) {
-      toast.error('Type name is required.');
+      toast.error('Course name is required.');
       return;
     }
     addTypeMutation.mutate(newTypeName);
@@ -136,18 +136,18 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
     <div className="space-y-8">
       <div className="border-b border-slate-200 pb-4">
         <h1 className="text-2xl font-black text-slate-800">Dynamic Library Configuration</h1>
-        <p className="text-xs text-slate-500">Configure book types, authors, and tags. Changes automatically update all catalog dropdowns.</p>
+        <p className="text-xs text-slate-500">Configure courses, authors, and tags. Changes automatically update all catalog dropdowns.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Book Types Configuration */}
+        {/* Courses Configuration */}
         <div className="bg-white rounded-2xl p-6 space-y-6 border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 pb-4">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
                 <Tag className="w-4 h-4" />
               </div>
-              <h2 className="text-base font-bold text-slate-800">Book Types</h2>
+              <h2 className="text-base font-bold text-slate-800">Courses</h2>
             </div>
             <span className="text-xs text-slate-400 font-mono">{bookTypes.length} Configured</span>
           </div>
@@ -156,7 +156,7 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
           <form onSubmit={handleAddType} className="flex gap-2">
             <input
               type="text"
-              placeholder="e.g. Agriculture, Technical..."
+              placeholder="Add a course or subject area..."
               value={newTypeName}
               onChange={(e) => setNewTypeName(e.target.value)}
               className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
@@ -171,12 +171,12 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
             </button>
           </form>
 
-          {/* Type List */}
+          {/* Course List */}
           <div className="space-y-2 max-h-72 overflow-y-auto">
             {loadingTypes ? (
-              <p className="text-xs text-slate-400 text-center py-4">Loading types...</p>
+              <p className="text-xs text-slate-400 text-center py-4">Loading courses...</p>
             ) : bookTypes.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-4">No book types configured.</p>
+              <p className="text-xs text-slate-400 text-center py-4">No courses configured.</p>
             ) : (
               bookTypes.map((type) => (
                 <div
@@ -187,7 +187,7 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
                   <button
                     onClick={() => deleteTypeMutation.mutate(type.id)}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                    title="Delete Type"
+                    title="Delete Course"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

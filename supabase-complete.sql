@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.books (
     type_id UUID REFERENCES public.book_types(id) ON DELETE SET NULL,
     total_copies INT NOT NULL DEFAULT 1 CHECK (total_copies >= 0),
     available_copies INT NOT NULL DEFAULT 1 CHECK (available_copies >= 0),
-    status VARCHAR(50) NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Borrowed', 'Reserved', 'Lost', 'Damaged')),
+    status VARCHAR(50) NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Unavailable', 'Reserved', 'Lost', 'Damaged')),
     cover_url VARCHAR(500),
     author VARCHAR(255) NOT NULL DEFAULT '',
     published_date DATE,
@@ -43,56 +43,19 @@ CREATE TABLE IF NOT EXISTS public.book_copies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
     serial_number VARCHAR(100) NOT NULL UNIQUE,
-    status VARCHAR(50) NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Borrowed')),
+    status VARCHAR(50) NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Unavailable')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- ============================================
--- 4. BORROW REQUESTS TABLE
--- ============================================
-CREATE TABLE IF NOT EXISTS public.borrow_requests (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    inquiry_number VARCHAR(50) NOT NULL,
-    student_name VARCHAR(255) NOT NULL,
-    student_id VARCHAR(100) NOT NULL,
-    course VARCHAR(100) NOT NULL,
-    year_level VARCHAR(50) NOT NULL,
-    section VARCHAR(50) NOT NULL,
-    book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
-    serial_number VARCHAR(100),
-    duration_days INT NOT NULL CHECK (duration_days >= 1 AND duration_days <= 3),
-    request_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'Pending' CHECK (status IN ('Pending', 'Approved', 'Rejected'))
-);
-
--- ============================================
--- 5. BORROW RECORDS TABLE
--- ============================================
-CREATE TABLE IF NOT EXISTS public.borrow_records (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    request_id UUID REFERENCES public.borrow_requests(id) ON DELETE SET NULL,
-    student_name VARCHAR(255) NOT NULL,
-    student_id VARCHAR(100) NOT NULL,
-    book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
-    serial_number VARCHAR(100),
-    borrow_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    due_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'Borrowed' CHECK (status IN ('Borrowed', 'Returned', 'Overdue'))
-);
-
--- ============================================
--- 6. RETURNS TABLE
--- ============================================
-CREATE TABLE IF NOT EXISTS public.returns (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    record_id UUID NOT NULL REFERENCES public.borrow_records(id) ON DELETE CASCADE,
-    student_name VARCHAR(255) NOT NULL,
-    book_title VARCHAR(255) NOT NULL,
-    serial_number VARCHAR(100),
-    borrow_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    return_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'Returned'
-);
+-- Upgrade an existing schema to admin-managed availability statuses.
+ALTER TABLE public.book_copies DROP CONSTRAINT IF EXISTS book_copies_status_check;
+UPDATE public.book_copies SET status = 'Unavailable' WHERE status = 'Borrowed';
+ALTER TABLE public.book_copies
+    ADD CONSTRAINT book_copies_status_check CHECK (status IN ('Available', 'Unavailable'));
+ALTER TABLE public.books DROP CONSTRAINT IF EXISTS books_status_check;
+UPDATE public.books SET status = 'Unavailable' WHERE status = 'Borrowed';
+ALTER TABLE public.books
+    ADD CONSTRAINT books_status_check CHECK (status IN ('Available', 'Unavailable', 'Reserved', 'Lost', 'Damaged'));
 
 -- ============================================
 -- 7. UNIFIED USERS TABLE (replaces admin_users + students)
@@ -122,6 +85,20 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS section VARCHAR(50);
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON public.users(username) WHERE username <> '';
 CREATE UNIQUE INDEX IF NOT EXISTS users_school_id_unique ON public.users(school_id) WHERE school_id <> '';
 CREATE INDEX IF NOT EXISTS idx_users_account_type ON public.users(account_type);
+
+-- ============================================
+-- STUDENT BOOK LISTS
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.student_book_lists (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
+    list_kind VARCHAR(20) NOT NULL CHECK (list_kind IN ('favorite', 'wishlist', 'recommendation')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE (student_id, book_id, list_kind)
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_book_lists_student_kind ON public.student_book_lists(student_id, list_kind);
 
 -- ============================================
 -- 8. AUTHORS TABLE (managed in Config page)
@@ -158,9 +135,7 @@ CREATE TABLE IF NOT EXISTS public.activity_logs (
 ALTER TABLE public.book_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.books ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.book_copies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.borrow_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.borrow_records ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.returns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_book_lists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.authors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY;
@@ -184,25 +159,15 @@ DROP POLICY IF EXISTS "Allow all access to book_copies" ON public.book_copies;
 CREATE POLICY "Allow all access to book_copies"
     ON public.book_copies FOR ALL USING (true) WITH CHECK (true);
 
--- Borrow Requests
-DROP POLICY IF EXISTS "Allow all access to borrow_requests" ON public.borrow_requests;
-CREATE POLICY "Allow all access to borrow_requests"
-    ON public.borrow_requests FOR ALL USING (true) WITH CHECK (true);
-
--- Borrow Records
-DROP POLICY IF EXISTS "Allow all access to borrow_records" ON public.borrow_records;
-CREATE POLICY "Allow all access to borrow_records"
-    ON public.borrow_records FOR ALL USING (true) WITH CHECK (true);
-
--- Returns
-DROP POLICY IF EXISTS "Allow all access to returns" ON public.returns;
-CREATE POLICY "Allow all access to returns"
-    ON public.returns FOR ALL USING (true) WITH CHECK (true);
-
 -- Users
 DROP POLICY IF EXISTS "Allow all access to users" ON public.users;
 CREATE POLICY "Allow all access to users"
     ON public.users FOR ALL USING (true) WITH CHECK (true);
+
+-- Student book lists
+DROP POLICY IF EXISTS "Allow all access to student_book_lists" ON public.student_book_lists;
+CREATE POLICY "Allow all access to student_book_lists"
+    ON public.student_book_lists FOR ALL USING (true) WITH CHECK (true);
 
 -- Authors
 DROP POLICY IF EXISTS "Allow all access to authors" ON public.authors;

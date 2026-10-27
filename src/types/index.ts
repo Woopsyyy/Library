@@ -1,7 +1,6 @@
-export type BookStatus = 'Available' | 'Borrowed' | 'Reserved' | 'Lost' | 'Damaged';
-export type RequestStatus = 'Pending' | 'Approved' | 'Rejected';
-export type BorrowRecordStatus = 'Borrowed' | 'Returned' | 'Overdue';
+export type BookStatus = 'Available' | 'Unavailable' | 'Reserved' | 'Lost' | 'Damaged';
 export type UserStatus = 'Active' | 'Disabled';
+export type StudentBookListKind = 'favorite' | 'wishlist' | 'recommendation';
 
 export interface BookType {
   id: string;
@@ -41,50 +40,7 @@ export interface Tag {
   created_at?: string;
 }
 
-export interface BorrowRequest {
-  id: string;
-  inquiry_number: string;
-  student_name: string;
-  student_id: string;
-  course: string;
-  year_level: string;
-  section: string;
-  book_id: string;
-  book_title?: string;
-  book_type?: string;
-
-  serial_number?: string;
-  duration_days: number;
-  request_date: string;
-  status: RequestStatus;
-}
-
-export interface BorrowRecord {
-  id: string;
-  request_id?: string;
-  student_name: string;
-  student_id: string;
-  book_id: string;
-  book_title?: string;
-  borrow_date: string;
-  due_date: string;
-  status: BorrowRecordStatus;
-  serial_number?: string;
-  remaining_days?: number;
-}
-
-export interface ReturnRecord {
-  id: string;
-  record_id: string;
-  student_name: string;
-  book_title: string;
-  borrow_date: string;
-  return_date: string;
-  status: 'Returned';
-  serial_number?: string;
-}
-
-export type BookCopyStatus = 'Available' | 'Borrowed';
+export type BookCopyStatus = 'Available' | 'Unavailable';
 
 export interface BookCopy {
   id: string;
