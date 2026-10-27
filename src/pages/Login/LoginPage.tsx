@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { dataService } from '../../services/dataService';
 import { toast } from 'sonner';
@@ -11,6 +11,17 @@ export const LoginPage: React.FC = () => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Already-logged-in users should not stay on the login page.
+  useEffect(() => {
+    const student = dataService.getCurrentStudent();
+    const admin = dataService.getCurrentUser();
+    if (student) {
+      navigate('/catalog', { replace: true });
+    } else if (admin) {
+      navigate('/admin/dashboard', { replace: true });
+    }
+  }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +50,7 @@ export const LoginPage: React.FC = () => {
         navigate('/admin/dashboard');
       } else {
         toast.success('Welcome back!');
-        navigate('/student');
+        navigate('/catalog');
       }
     } catch (err: any) {
       toast.error(err.message || 'Invalid credentials.');

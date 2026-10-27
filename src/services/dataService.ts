@@ -605,6 +605,14 @@ export const dataService = {
     });
   },
 
+  // Books added within the last 30 days surface as "New Arrivals" in the student view.
+  // After 30 days they fall out of this computed category automatically (no per-student storage needed).
+  async getNewlyAddedBooks(): Promise<Book[]> {
+    const books = await this.getBooks();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    return books.filter((b) => Boolean(b.created_at) && b.created_at! >= thirtyDaysAgo);
+  },
+
   async addBook(data: { title: string; type_id: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; location?: string; copyright_year?: string; publisher?: string; accession_number?: string; cover_file?: File | null }): Promise<Book> {
     if (!data.title.trim()) throw new Error('Book title is required.');
     if (data.total_copies < 1) throw new Error('Total copies must be at least 1.');

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
@@ -12,6 +12,17 @@ import logoImg from '@/assets/images/logo.png';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
+
+  // Already-logged-in users should not land on the public landing page.
+  useEffect(() => {
+    const student = dataService.getCurrentStudent();
+    const admin = dataService.getCurrentUser();
+    if (student) {
+      navigate('/catalog', { replace: true });
+    } else if (admin) {
+      navigate('/admin/dashboard', { replace: true });
+    }
+  }, [navigate]);
 
   const { data: books = [] } = useQuery({
     queryKey: ['books'],
