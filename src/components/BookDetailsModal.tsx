@@ -33,6 +33,7 @@ export const BookDetailsModal: React.FC<{ book: Book; onClose: () => void }> = (
               {book.copyright_year && <p><span className="font-bold text-slate-900">Copyright:</span> {book.copyright_year}</p>}
               {book.location && <p><span className="font-bold text-slate-900">Location:</span> {book.location}</p>}
               {book.accession_number && <p><span className="font-bold text-slate-900">Accession number:</span> {book.accession_number}</p>}
+              <p><span className="font-bold text-slate-900">Borrow duration:</span> {(book.borrow_duration_days ?? 7)} day{(book.borrow_duration_days ?? 7) !== 1 ? 's' : ''}</p>
             </div>
             {book.tags && book.tags.length > 0 && <div className="flex flex-wrap items-center gap-2 pt-1"><span className="text-base font-bold text-slate-900">Tags:</span>{book.tags.map(tag => <span key={tag} className="px-3 py-1 rounded-full text-sm font-semibold bg-violet-50 text-violet-800 border border-violet-100">{tag}</span>)}</div>}
             <div className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-base font-bold text-slate-800"><span>Available copies</span><span className="text-emerald-700">{book.available_copies} of {book.total_copies}</span></div>

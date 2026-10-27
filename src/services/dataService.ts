@@ -631,6 +631,7 @@ export const dataService = {
         total_copies: Number(b.total_copies) || 0,
         available_copies: Number(b.available_copies) || 0,
         type_name: typeObj ? typeObj.name : (b.type_name || 'Unassigned'),
+        borrow_duration_days: typeObj ? typeObj.borrow_duration_days : (b.borrow_duration_days ?? 7),
         author: b.author || '',
         published_date: b.published_date || null,
         tags: Array.isArray(b.tags) ? b.tags : [],

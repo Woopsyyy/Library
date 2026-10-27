@@ -15,6 +15,7 @@ export interface Book {
   title: string;
   type_id: string;
   type_name?: string;
+  borrow_duration_days?: number;
   total_copies: number;
   available_copies: number;
   status: BookStatus;
