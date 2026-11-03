@@ -159,12 +159,9 @@ const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, 
             </div>
             <div className="flex flex-wrap gap-1.5">
               {copies.map((c) => (
-                <button
+                <span
                   key={c.id}
-                  type="button"
-                  disabled={statusMutation.isPending}
-                  title={`Click to mark ${c.serial_number} ${c.status === 'Available' ? 'unavailable' : 'available'}`}
-                  onClick={() => statusMutation.mutate({ copyId: c.id, status: c.status === 'Available' ? 'Unavailable' : 'Available' })}
+                  title={c.serial_number}
                   className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-bold border flex items-center gap-1.5 ${
                     c.status === 'Unavailable'
                       ? 'bg-rose-50 text-rose-700 border-rose-200'
@@ -181,7 +178,7 @@ const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, 
                   >
                     {c.status}
                   </span>
-                </button>
+                </span>
               ))}
             </div>
           </div>
@@ -262,6 +259,7 @@ export const BooksPage: React.FC = () => {
   const [accessionNumber, setAccessionNumber] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [totalCopies, setTotalCopies] = useState<number>(1);
+  const [borrowDays, setBorrowDays] = useState<number>(7);
   const [status, setStatus] = useState<BookStatus>('Available');
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState('');
@@ -316,7 +314,14 @@ const { data: authors = [] } = useQuery({
 
   const openAddModal = () => {
     setTitle('');
-    if (bookTypes.length > 0) setTypeId(bookTypes[0].id);
+    const defaultType = bookTypes[0];
+    if (defaultType) {
+      setTypeId(defaultType.id);
+      setBorrowDays(defaultType.borrow_duration_days ?? 7);
+    } else {
+      setTypeId('');
+      setBorrowDays(7);
+    }
     resetMetaFields();
     setAccessionNumber('');
     setTotalCopies(1);
@@ -340,10 +345,11 @@ const { data: authors = [] } = useQuery({
     setStatus(book.status);
     setCoverFile(null);
     setCoverPreview(book.cover_url || '');
+    setBorrowDays(book.borrow_duration_days ?? 7);
   };
 
   const addMutation = useMutation({
-    mutationFn: (data: { title: string; type_id: string; total_copies: number; author: string; published_date: string; location: string; copyright_year: string; publisher: string; accession_number: string; tags: string[]; cover_file?: File | null }) =>
+    mutationFn: (data: { title: string; type_id: string; total_copies: number; author: string; published_date: string; location: string; copyright_year: string; publisher: string; accession_number: string; tags: string[]; borrow_duration_days: number; cover_file?: File | null }) =>
       dataService.addBook(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
@@ -407,6 +413,7 @@ const { data: authors = [] } = useQuery({
       publisher,
       accession_number: accessionNumber,
       tags: selectedTags,
+      borrow_duration_days: Number(borrowDays),
       cover_file: coverFile,
     });
   };
@@ -428,6 +435,7 @@ const { data: authors = [] } = useQuery({
         publisher,
         accession_number: accessionNumber,
         tags: selectedTags,
+        borrow_duration_days: Number(borrowDays),
         cover_file: coverFile,
       },
     });
@@ -549,6 +557,9 @@ const { data: authors = [] } = useQuery({
                       <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         {book.type_name}
                       </span>
+                      <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+                        Max {book.borrow_duration_days ?? 7}d loan
+                      </span>
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-800 max-w-[10rem] truncate" title={book.author || ''}>
                       {book.author || <span className="text-slate-300">—</span>}
@@ -653,7 +664,14 @@ const { data: authors = [] } = useQuery({
                   <label className="text-xs font-semibold text-slate-700">Course *</label>
                   <select
                     value={typeId}
-                    onChange={(e) => setTypeId(e.target.value)}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setTypeId(id);
+                      const matched = bookTypes.find((t) => t.id === id);
+                      if (matched?.borrow_duration_days) {
+                        setBorrowDays(matched.borrow_duration_days);
+                      }
+                    }}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-800 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                   >
                     {bookTypes.map((t) => (
@@ -769,7 +787,22 @@ const { data: authors = [] } = useQuery({
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                 />
                 <p className="text-[11px] text-emerald-700 font-medium pt-0.5">
-                  ✨ Unique calling numbers will be automatically generated for all {totalCopies || 1} {totalCopies === 1 ? 'copy' : 'copies'}. No manual entry required.
+                  �o" Unique calling numbers will be automatically generated for all {totalCopies || 1} {totalCopies === 1 ? 'copy' : 'copies'}. No manual entry required.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Maximum Borrow Days *</label>
+                <input
+                  type="number"
+                  min={1}
+                  required
+                  value={borrowDays}
+                  onChange={(e) => setBorrowDays(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                />
+                <p className="text-[11px] text-slate-500 font-medium pt-0.5">
+                  Max days this book can be borrowed by students (used as limit in borrow slider).
                 </p>
               </div>
 
@@ -942,6 +975,17 @@ const { data: authors = [] } = useQuery({
                     min={1}
                     value={totalCopies}
                     onChange={(e) => setTotalCopies(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Maximum Borrow Days *</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={borrowDays}
+                    onChange={(e) => setBorrowDays(Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                   />
                 </div>

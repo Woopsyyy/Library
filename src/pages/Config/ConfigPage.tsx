@@ -77,12 +77,9 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
       toast.error('Course name is required.');
       return;
     }
-    const duration = Number(editingTypeDuration || '7');
-    if (!Number.isInteger(duration) || duration < 1) {
-      toast.error('Borrow duration must be at least 1 day.');
-      return;
-    }
-    updateTypeMutation.mutate({ id, name: editingTypeName, borrow_duration_days: duration });
+    const duration = parseInt(editingTypeDuration, 10);
+    const validDuration = !isNaN(duration) && duration >= 1 ? duration : 7;
+    updateTypeMutation.mutate({ id, name: editingTypeName, borrow_duration_days: validDuration });
   };
 
   // Author Mutations
@@ -143,7 +140,9 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
       toast.error('Course name is required.');
       return;
     }
-    addTypeMutation.mutate({ name: newTypeName, borrow_duration_days: Number(newTypeDuration || '7') });
+    const duration = parseInt(newTypeDuration, 10);
+    const validDuration = !isNaN(duration) && duration >= 1 ? duration : 7;
+    addTypeMutation.mutate({ name: newTypeName, borrow_duration_days: validDuration });
   };
 
   const handleAddAuthor = (e: React.FormEvent) => {
@@ -185,7 +184,7 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
           </div>
 
           {/* Add Type Form */}
-          <form onSubmit={handleAddType} className="flex gap-2">
+          <form onSubmit={handleAddType} className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               placeholder="Add a course or subject area..."
@@ -193,33 +192,18 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
               onChange={(e) => setNewTypeName(e.target.value)}
               className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
             />
-            <button
-              type="submit"
-              disabled={addTypeMutation.isPending}
-              className="px-4 py-2.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-60"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add</span>
-            </button>
-          </form>
-
-          {/* Add Type Form */}
-          <form onSubmit={handleAddType} className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Add a course or subject area..."
-              value={newTypeName}
-              onChange={(e) => setNewTypeName(e.target.value)}
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
-            />
-            <input
-              type="number"
-              min="1"
-              placeholder="Days"
-              value={newTypeDuration}
-              onChange={(e) => setNewTypeDuration(e.target.value)}
-              className="w-16 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-xs focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
-            />
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+              <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">Max Days:</span>
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={newTypeDuration}
+                onChange={(e) => setNewTypeDuration(e.target.value)}
+                className="w-14 px-1 py-1 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs text-center font-bold focus:outline-none focus:border-emerald-500"
+                title="Default maximum borrow duration in days"
+              />
+            </div>
             <button
               type="submit"
               disabled={addTypeMutation.isPending}
@@ -253,19 +237,24 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
                             onChange={(e) => setEditingTypeName(e.target.value)}
                             className="flex-1 px-2 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs focus:outline-none focus:border-emerald-400"
                           />
-                          <input
-                            type="number"
-                            min="1"
-                            value={editingTypeDuration}
-                            onChange={(e) => setEditingTypeDuration(e.target.value)}
-                            className="w-16 px-2 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs focus:outline-none focus:border-emerald-400"
-                          />
-                          <span className="text-[10px] text-slate-400 font-medium">days</span>
+                          <div className="flex items-center gap-1 text-[11px] text-slate-500 whitespace-nowrap">
+                            <span>Days:</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={90}
+                              value={editingTypeDuration}
+                              onChange={(e) => setEditingTypeDuration(e.target.value)}
+                              className="w-14 px-1 py-1 rounded bg-white border border-slate-300 text-slate-800 text-xs text-center font-bold focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center justify-between gap-2 min-w-0 flex-1 pr-2">
                           <span className="text-xs font-semibold text-slate-700 truncate">{type.name}</span>
-                          <span className="text-[10px] font-medium text-slate-400 bg-slate-200 px-2 py-0.5 rounded">{type.borrow_duration_days ?? 7} days</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                            Max {type.borrow_duration_days ?? 7}d
+                          </span>
                         </div>
                       )}
                       <div className="flex items-center gap-1 ml-2">
@@ -285,7 +274,7 @@ const { data: authors = [], isLoading: loadingAuthors } = useQuery({
                             onClick={() => {
                               setEditingTypeId(type.id);
                               setEditingTypeName(type.name);
-                              setEditingTypeDuration(String(type.borrow_duration_days ?? '7'));
+                              setEditingTypeDuration(String(type.borrow_duration_days ?? 7));
                             }}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
                             title="Edit Course"

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Users, Settings, LogOut, Menu, X, ExternalLink } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, Settings, LogOut, Menu, X, ExternalLink, ClipboardList } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { toast } from 'sonner';
 
@@ -18,6 +18,7 @@ export const AdminLayout: React.FC = () => {
   const navItems = [
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/admin/books', label: 'Books', icon: BookOpen },
+    { to: '/admin/borrow', label: 'Borrow', icon: ClipboardList },
     { to: '/admin/users', label: 'Users', icon: Users },
     { to: '/admin/config', label: 'Config', icon: Settings },
   ];

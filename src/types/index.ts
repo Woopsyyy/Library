@@ -79,3 +79,21 @@ export interface ActivityLog {
   user_name: string;
   created_at: string;
 }
+
+export type BorrowStatus = 'Borrowed' | 'Returned' | 'Overdue';
+
+export interface BorrowRecord {
+  id: string;
+  student_id: string;
+  book_id: string;
+  copy_id?: string | null;
+  borrow_days: number;
+  borrowed_at: string;
+  due_date: string;
+  status: BorrowStatus;
+  returned_at?: string | null;
+  created_at?: string;
+  student_name?: string;
+  student_school_id?: string;
+  book_title?: string;
+}

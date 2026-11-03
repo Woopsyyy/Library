@@ -21,6 +21,7 @@ import { DashboardPage } from './pages/Dashboard/DashboardPage';
 import { BooksPage } from './pages/Books/BooksPage';
 import { UsersPage } from './pages/Users/UsersPage';
 import { ConfigPage } from './pages/Config/ConfigPage';
+import { BorrowPage } from './pages/Borrow/BorrowPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -63,6 +64,7 @@ export const App: React.FC = () => {
               <Route path="books" element={<BooksPage />} />
               <Route path="users" element={<UsersPage />} />
               <Route path="config" element={<ConfigPage />} />
+              <Route path="borrow" element={<BorrowPage />} />
             </Route>
           </Route>
 

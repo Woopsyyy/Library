@@ -1,4 +1,4 @@
-import { Book, BookType, Author, Tag, BookCopy, StudentBookListKind, User, AccountType, ActivityLog } from '../types';
+import { Book, BookType, Author, Tag, BookCopy, StudentBookListKind, User, AccountType, ActivityLog, BorrowRecord } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 // Local storage keys for fallback cache
@@ -17,6 +17,7 @@ const STORAGE_KEYS = {
   STUDENT_AUTH: 'talisay_student_auth',
   LEGACY_ADMIN_USERS: 'talisay_admin_users',
   LEGACY_STUDENTS: 'talisay_student_users',
+  BORROW_RECORDS: 'talisay_borrow_records',
 };
 
 // School ID format: <four digits>-<four digits>, e.g. 1234-5678 (typed manually by the student)
@@ -631,7 +632,7 @@ export const dataService = {
         total_copies: Number(b.total_copies) || 0,
         available_copies: Number(b.available_copies) || 0,
         type_name: typeObj ? typeObj.name : (b.type_name || 'Unassigned'),
-        borrow_duration_days: typeObj ? typeObj.borrow_duration_days : (b.borrow_duration_days ?? 7),
+        borrow_duration_days: b.borrow_duration_days ?? typeObj?.borrow_duration_days ?? 7,
         author: b.author || '',
         published_date: b.published_date || null,
         tags: Array.isArray(b.tags) ? b.tags : [],
@@ -651,7 +652,7 @@ export const dataService = {
     return books.filter((b) => Boolean(b.created_at) && b.created_at! >= thirtyDaysAgo);
   },
 
-  async addBook(data: { title: string; type_id: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; location?: string; copyright_year?: string; publisher?: string; accession_number?: string; cover_file?: File | null }): Promise<Book> {
+  async addBook(data: { title: string; type_id: string; total_copies: number; author?: string; published_date?: string | null; tags?: string[]; location?: string; copyright_year?: string; publisher?: string; accession_number?: string; borrow_duration_days?: number; cover_file?: File | null }): Promise<Book> {
     if (!data.title.trim()) throw new Error('Book title is required.');
     if (data.total_copies < 1) throw new Error('Total copies must be at least 1.');
 
@@ -683,6 +684,7 @@ export const dataService = {
       copyright_year: data.copyright_year?.trim() || undefined,
       publisher: data.publisher?.trim() || undefined,
       accession_number: data.accession_number?.trim() || undefined,
+      borrow_duration_days: data.borrow_duration_days !== undefined ? Number(data.borrow_duration_days) : 7,
       ...(cover_url ? { cover_url } : {}),
     };
 
@@ -770,6 +772,11 @@ export const dataService = {
     if (updates.accession_number !== undefined) {
       bookUpdates.accession_number = (updates.accession_number || '').trim() || undefined;
     }
+    if (updates.borrow_duration_days !== undefined) {
+      const duration = Number(updates.borrow_duration_days);
+      if (!Number.isInteger(duration) || duration < 1) throw new Error('Borrow duration must be at least 1 day.');
+      bookUpdates.borrow_duration_days = duration;
+    }
 
     const updatedBook: Book = {
       ...books[index],
@@ -797,8 +804,9 @@ export const dataService = {
         location: updatedBook.location || undefined,
         copyright_year: updatedBook.copyright_year || undefined,
         publisher: updatedBook.publisher || undefined,
-        accession_number: updatedBook.accession_number || undefined,
-        ...(updatedBook.cover_url ? { cover_url: updatedBook.cover_url } : {}),
+         accession_number: updatedBook.accession_number || undefined,
+         borrow_duration_days: updatedBook.borrow_duration_days,
+         ...(updatedBook.cover_url ? { cover_url: updatedBook.cover_url } : {}),
       }).eq('id', id);
       if (error) throw new Error(error.message);
     }
@@ -1373,5 +1381,126 @@ export const dataService = {
     if (student) {
       logActivity('Student logout', `Student ${student.full_name} (${student.school_id}) signed out`, student.full_name);
     }
+  },
+
+  // BORROWING
+  async getBorrowRecords(): Promise<BorrowRecord[]> {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.from('borrow_records').select('*').order('borrowed_at', { ascending: false });
+      if (!error && data) {
+        const users = await this.getUsers();
+        const books = await this.getBooks();
+        return (data as any[]).map(r => {
+          const student = users.find(u => u.id === r.student_id);
+          const book = books.find(b => b.id === r.book_id);
+          return {
+            ...r,
+            student_name: student?.full_name,
+            student_school_id: student?.school_id,
+            book_title: book?.title,
+          } as BorrowRecord;
+        });
+      }
+    }
+    const records = getLocal<BorrowRecord[]>(STORAGE_KEYS.BORROW_RECORDS, []);
+    const users = getLocalUsers();
+    const books = getLocal<Book[]>(STORAGE_KEYS.BOOKS, []);
+    return records.map(r => {
+      const student = users.find(u => u.id === r.student_id);
+      const book = books.find(b => b.id === r.book_id);
+      return { ...r, student_name: student?.full_name, student_school_id: student?.school_id, book_title: book?.title };
+    });
+  },
+
+  async borrowBook(data: { school_id: string; book_id: string; days: number }): Promise<BorrowRecord> {
+    const cleanSchoolId = data.school_id.trim();
+    if (!cleanSchoolId) throw new Error('Student school ID is required.');
+    const days = Number(data.days);
+    if (!Number.isInteger(days) || days < 1) throw new Error('Borrow days must be at least 1.');
+
+    const students = await this.getStudentUsers();
+    const student = students.find(s => s.school_id.toLowerCase() === cleanSchoolId.toLowerCase());
+    if (!student) throw new Error('Student not found for this school ID.');
+    if (student.status !== 'Active') throw new Error('Student account is disabled.');
+
+    const books = await this.getBooks();
+    const book = books.find(b => b.id === data.book_id);
+    if (!book) throw new Error('Book not found.');
+    const maxDays = book.borrow_duration_days ?? 7;
+    if (days > maxDays) throw new Error(`Borrow days cannot exceed ${maxDays} (book max).`);
+
+    const copies = await this.getBookCopies(book.id);
+    const availableCopy = copies.find(c => c.status === 'Available');
+    if (!availableCopy) throw new Error('No available copies for this book.');
+
+    // mark copy unavailable
+    await this.setCopyStatus(availableCopy.id, 'Unavailable');
+
+    const due = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const record: BorrowRecord = {
+      id: 'borrow-' + Date.now(),
+      student_id: student.id,
+      book_id: book.id,
+      copy_id: availableCopy.id,
+      borrow_days: days,
+      borrowed_at: new Date().toISOString(),
+      due_date: due,
+      status: 'Borrowed',
+    };
+
+    if (isSupabaseConfigured && supabase) {
+      const conn = await validateDatabaseConnection();
+      if (!conn.connected) throw new Error(conn.message || 'Database not connected.');
+      const { data: inserted, error } = await supabase.from('borrow_records').insert([{
+        student_id: record.student_id,
+        book_id: record.book_id,
+        copy_id: record.copy_id,
+        borrow_days: record.borrow_days,
+        borrowed_at: record.borrowed_at,
+        due_date: record.due_date,
+        status: record.status,
+      }]).select().single();
+      if (error) throw new Error(error.message);
+      logActivity('Book borrowed', `Borrowed "${book.title}" to ${student.full_name} (${student.school_id}) for ${days} days`);
+      return { ...record, ...inserted, student_name: student.full_name, student_school_id: student.school_id, book_title: book.title };
+    }
+
+    const all = getLocal<BorrowRecord[]>(STORAGE_KEYS.BORROW_RECORDS, []);
+    all.unshift(record);
+    setLocal(STORAGE_KEYS.BORROW_RECORDS, all);
+    logActivity('Book borrowed', `Borrowed "${book.title}" to ${student.full_name} (${student.school_id}) for ${days} days`);
+    return { ...record, student_name: student.full_name, student_school_id: student.school_id, book_title: book.title };
+  },
+
+  async returnBook(recordId: string): Promise<void> {
+    let record: BorrowRecord | undefined;
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.from('borrow_records').select('*').eq('id', recordId).single();
+      if (error) throw new Error(error.message);
+      record = data as BorrowRecord;
+    } else {
+      const all = getLocal<BorrowRecord[]>(STORAGE_KEYS.BORROW_RECORDS, []);
+      record = all.find(r => r.id === recordId);
+    }
+    if (!record) throw new Error('Borrow record not found.');
+    if (record.status === 'Returned') throw new Error('Already returned.');
+
+    if (record.copy_id) {
+      await this.setCopyStatus(record.copy_id, 'Available');
+    }
+
+    const returned_at = new Date().toISOString();
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('borrow_records').update({ status: 'Returned', returned_at }).eq('id', recordId);
+      if (error) throw new Error(error.message);
+    } else {
+      const all = getLocal<BorrowRecord[]>(STORAGE_KEYS.BORROW_RECORDS, []);
+      const idx = all.findIndex(r => r.id === recordId);
+      if (idx !== -1) {
+        all[idx] = { ...all[idx], status: 'Returned', returned_at };
+        setLocal(STORAGE_KEYS.BORROW_RECORDS, all);
+      }
+    }
+    logActivity('Book returned', `Returned borrow record ${recordId}`);
   },
 };

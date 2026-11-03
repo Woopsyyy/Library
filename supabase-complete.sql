@@ -269,3 +269,24 @@ SELECT
 FROM public.book_types bt
 WHERE bt.name = 'Research'
   AND NOT EXISTS (SELECT 1 FROM public.books WHERE title = 'Research Methodologies & Data Analysis');
+
+-- ============================================
+-- BORROW RECORDS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.borrow_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
+    copy_id UUID REFERENCES public.book_copies(id) ON DELETE SET NULL,
+    borrow_days INT NOT NULL CHECK (borrow_days >= 1),
+    borrowed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    due_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'Borrowed' CHECK (status IN ('Borrowed','Returned','Overdue')),
+    returned_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.borrow_records ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to borrow_records" ON public.borrow_records;
+CREATE POLICY "Allow all access to borrow_records"
+    ON public.borrow_records FOR ALL USING (true) WITH CHECK (true);
