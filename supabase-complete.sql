@@ -275,9 +275,14 @@ WHERE bt.name = 'Research'
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.borrow_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    student_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
     book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
     copy_id UUID REFERENCES public.book_copies(id) ON DELETE SET NULL,
+    student_name TEXT,
+    student_school_id TEXT,
+    student_course TEXT,
+    student_year_level TEXT,
+    student_section TEXT,
     borrow_days INT NOT NULL CHECK (borrow_days >= 1),
     borrowed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     due_date TIMESTAMP WITH TIME ZONE NOT NULL,

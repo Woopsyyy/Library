@@ -10,9 +10,14 @@ WHERE b.type_id = bt.id AND (b.borrow_duration_days IS NULL OR b.borrow_duration
 -- 2. Borrow records
 CREATE TABLE IF NOT EXISTS public.borrow_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    student_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
     book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
     copy_id UUID REFERENCES public.book_copies(id) ON DELETE SET NULL,
+    student_name TEXT,
+    student_school_id TEXT,
+    student_course TEXT,
+    student_year_level TEXT,
+    student_section TEXT,
     borrow_days INT NOT NULL CHECK (borrow_days >= 1),
     borrowed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     due_date TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -25,6 +30,13 @@ CREATE INDEX IF NOT EXISTS idx_borrow_records_student ON public.borrow_records(s
 CREATE INDEX IF NOT EXISTS idx_borrow_records_book ON public.borrow_records(book_id);
 CREATE INDEX IF NOT EXISTS idx_borrow_records_status ON public.borrow_records(status);
 
+-- Ensure existing tables support manual borrower details (no student account required)
+ALTER TABLE public.borrow_records ALTER COLUMN student_id DROP NOT NULL;
+ALTER TABLE public.borrow_records DROP CONSTRAINT IF EXISTS borrow_records_student_id_fkey;
+ALTER TABLE public.borrow_records ADD COLUMN IF NOT EXISTS student_name TEXT;
+ALTER TABLE public.borrow_records ADD COLUMN IF NOT EXISTS student_school_id TEXT;
+ALTER TABLE public.borrow_records ADD COLUMN IF NOT EXISTS student_course TEXT;
+ALTER TABLE public.borrow_records ADD COLUMN IF NOT EXISTS student_year_level TEXT;
 ALTER TABLE public.borrow_records ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all access to borrow_records" ON public.borrow_records;
 CREATE POLICY "Allow all access to borrow_records"

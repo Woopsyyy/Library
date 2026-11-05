@@ -1391,13 +1391,15 @@ export const dataService = {
         const users = await this.getUsers();
         const books = await this.getBooks();
         return (data as any[]).map(r => {
-          const student = users.find(u => u.id === r.student_id);
-          const book = books.find(b => b.id === r.book_id);
+          const student = r.student_id ? users.find(u => u.id === r.student_id) : undefined;
           return {
             ...r,
-            student_name: student?.full_name,
-            student_school_id: student?.school_id,
-            book_title: book?.title,
+            student_name: r.student_name ?? student?.full_name,
+            student_school_id: r.student_school_id ?? student?.school_id,
+            student_course: r.student_course ?? student?.course,
+            student_year_level: r.student_year_level ?? student?.year_level,
+            student_section: r.student_section ?? student?.section,
+            book_title: books.find(b => b.id === r.book_id)?.title,
           } as BorrowRecord;
         });
       }
@@ -1406,22 +1408,27 @@ export const dataService = {
     const users = getLocalUsers();
     const books = getLocal<Book[]>(STORAGE_KEYS.BOOKS, []);
     return records.map(r => {
-      const student = users.find(u => u.id === r.student_id);
+      const student = r.student_id ? users.find(u => u.id === r.student_id) : undefined;
       const book = books.find(b => b.id === r.book_id);
-      return { ...r, student_name: student?.full_name, student_school_id: student?.school_id, book_title: book?.title };
+      return {
+        ...r,
+        student_name: r.student_name ?? student?.full_name,
+        student_school_id: r.student_school_id ?? student?.school_id,
+        student_course: r.student_course ?? student?.course,
+        student_year_level: r.student_year_level ?? student?.year_level,
+        student_section: r.student_section ?? student?.section,
+        book_title: r.book_title ?? book?.title,
+      };
     });
   },
 
-  async borrowBook(data: { school_id: string; book_id: string; days: number }): Promise<BorrowRecord> {
+  async borrowBook(data: { school_id: string; full_name: string; course?: string; year_level?: string; section?: string; book_id: string; days: number }): Promise<BorrowRecord> {
     const cleanSchoolId = data.school_id.trim();
+    const cleanFullName = data.full_name.trim();
     if (!cleanSchoolId) throw new Error('Student school ID is required.');
+    if (!cleanFullName) throw new Error('Student full name is required.');
     const days = Number(data.days);
     if (!Number.isInteger(days) || days < 1) throw new Error('Borrow days must be at least 1.');
-
-    const students = await this.getStudentUsers();
-    const student = students.find(s => s.school_id.toLowerCase() === cleanSchoolId.toLowerCase());
-    if (!student) throw new Error('Student not found for this school ID.');
-    if (student.status !== 'Active') throw new Error('Student account is disabled.');
 
     const books = await this.getBooks();
     const book = books.find(b => b.id === data.book_id);
@@ -1439,37 +1446,46 @@ export const dataService = {
     const due = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
     const record: BorrowRecord = {
       id: 'borrow-' + Date.now(),
-      student_id: student.id,
+      student_id: null,
       book_id: book.id,
       copy_id: availableCopy.id,
       borrow_days: days,
       borrowed_at: new Date().toISOString(),
       due_date: due,
       status: 'Borrowed',
+      student_name: cleanFullName,
+      student_school_id: cleanSchoolId,
+      student_course: data.course?.trim() || undefined,
+      student_year_level: data.year_level?.trim() || undefined,
+      student_section: data.section?.trim() || undefined,
     };
 
     if (isSupabaseConfigured && supabase) {
       const conn = await validateDatabaseConnection();
       if (!conn.connected) throw new Error(conn.message || 'Database not connected.');
       const { data: inserted, error } = await supabase.from('borrow_records').insert([{
-        student_id: record.student_id,
         book_id: record.book_id,
         copy_id: record.copy_id,
         borrow_days: record.borrow_days,
         borrowed_at: record.borrowed_at,
         due_date: record.due_date,
         status: record.status,
+        student_name: record.student_name,
+        student_school_id: record.student_school_id,
+        student_course: record.student_course,
+        student_year_level: record.student_year_level,
+        student_section: record.student_section,
       }]).select().single();
       if (error) throw new Error(error.message);
-      logActivity('Book borrowed', `Borrowed "${book.title}" to ${student.full_name} (${student.school_id}) for ${days} days`);
-      return { ...record, ...inserted, student_name: student.full_name, student_school_id: student.school_id, book_title: book.title };
+      logActivity('Book borrowed', `Borrowed "${book.title}" to ${cleanFullName} (${cleanSchoolId}) for ${days} days`);
+      return { ...record, ...inserted, book_title: book.title };
     }
 
     const all = getLocal<BorrowRecord[]>(STORAGE_KEYS.BORROW_RECORDS, []);
     all.unshift(record);
     setLocal(STORAGE_KEYS.BORROW_RECORDS, all);
-    logActivity('Book borrowed', `Borrowed "${book.title}" to ${student.full_name} (${student.school_id}) for ${days} days`);
-    return { ...record, student_name: student.full_name, student_school_id: student.school_id, book_title: book.title };
+    logActivity('Book borrowed', `Borrowed "${book.title}" to ${cleanFullName} (${cleanSchoolId}) for ${days} days`);
+    return { ...record, book_title: book.title };
   },
 
   async returnBook(recordId: string): Promise<void> {

@@ -84,7 +84,7 @@ export type BorrowStatus = 'Borrowed' | 'Returned' | 'Overdue';
 
 export interface BorrowRecord {
   id: string;
-  student_id: string;
+  student_id?: string | null;
   book_id: string;
   copy_id?: string | null;
   borrow_days: number;
@@ -95,5 +95,8 @@ export interface BorrowRecord {
   created_at?: string;
   student_name?: string;
   student_school_id?: string;
+  student_course?: string;
+  student_year_level?: string;
+  student_section?: string;
   book_title?: string;
 }
