@@ -37,7 +37,7 @@ export const BorrowPage: React.FC = () => {
   const [bookSearch, setBookSearch] = useState('');
   const [isBookDropdownOpen, setIsBookDropdownOpen] = useState(false);
 
-  const [days, setDays] = useState<number>(7);
+  const [days, setDays] = useState<number>(3);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'overdue' | 'returned'>('all');
 
@@ -80,7 +80,7 @@ export const BorrowPage: React.FC = () => {
   }, [books, bookSearch]);
 
   // Synchronize max days when selected book changes
-  const maxBorrowDays = selectedBook?.borrow_duration_days ?? 7;
+  const maxBorrowDays = selectedBook ? (selectedBook.borrow_duration_days ?? 7) : 3;
 
   const handleClearStudent = () => {
     setStudentSchoolId('');
@@ -108,7 +108,7 @@ export const BorrowPage: React.FC = () => {
     setSelectedBook(null);
     setBookId('');
     setBookSearch('');
-    setDays(7);
+    setDays(3);
   };
 
   // Borrow Mutation
@@ -226,7 +226,7 @@ export const BorrowPage: React.FC = () => {
   }, [records, searchTerm, statusFilter]);
 
   // Quick preset days options
-  const presetDays = [1, 3, 5, 7, 14, 21, 30].filter((n) => n <= maxBorrowDays);
+  const presetDays = [1, 2, 3, 5, 7, 14, 21, 30].filter((n) => n <= maxBorrowDays);
 
   return (
     <div className="space-y-7 pb-12">
