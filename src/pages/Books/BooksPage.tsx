@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
-import { Book, BookStatus, Tag as TagType } from '../../types';
+import { Book, BookStatus, Tag as TagType, BookCopyStatus } from '../../types';
 import { toast } from 'sonner';
 import { Plus, Edit2, Trash2, Search, BookOpen, X, UploadCloud, Tag, ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -94,13 +94,18 @@ const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, 
     queryFn: () => dataService.getBookCopies(bookId),
   });
 
+  const [isAddCopyOpen, setIsAddCopyOpen] = useState(false);
+  const [newSerial, setNewSerial] = useState('');
+
   const addCopyMutation = useMutation({
-    mutationFn: () => dataService.addBookCopy(bookId),
+    mutationFn: (serial: string) => dataService.addBookCopy(bookId, serial),
     onSuccess: (newCopy) => {
       queryClient.invalidateQueries({ queryKey: ['copies', bookId] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      toast.success(`New copy added! Calling number: ${newCopy.serial_number}`);
+      toast.success(`New copy added! copy of books: ${newCopy.serial_number}`);
+      setIsAddCopyOpen(false);
+      setNewSerial('');
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to add copy.');
@@ -108,31 +113,31 @@ const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, 
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ copyId, status }: { copyId: string; status: 'Available' | 'Unavailable' }) => dataService.setCopyStatus(copyId, status),
+    mutationFn: ({ copyId, status }: { copyId: string; status: BookCopyStatus }) => dataService.setCopyStatus(copyId, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['copies', bookId] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     },
-    onError: (err: any) => toast.error(err.message || 'Failed to update calling number status.'),
+    onError: (err: any) => toast.error(err.message || 'Failed to update copy of books status.'),
   });
 
   return (
+    <>
     <tr className="bg-slate-50/70">
       <td colSpan={colSpan} className="px-4 py-3">
         {isLoading ? (
-          <p className="text-[11px] text-slate-400 font-medium pl-8">Loading calling numbers...</p>
+          <p className="text-[11px] text-slate-400 font-medium pl-8">Loading copy of books...</p>
         ) : copies.length === 0 ? (
           <div className="pl-8 flex items-center gap-3">
-            <p className="text-[11px] text-slate-400 font-medium">No calling numbers yet.</p>
+            <p className="text-[11px] text-slate-400 font-medium">No copy of books yet.</p>
             <button
               type="button"
-              onClick={() => addCopyMutation.mutate()}
-              disabled={addCopyMutation.isPending}
+              onClick={() => { setNewSerial(''); setIsAddCopyOpen(true); }}
               className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-xs transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>{addCopyMutation.isPending ? 'Generating...' : 'Add First Copy'}</span>
+              <span>Add First Copy</span>
             </button>
           </div>
         ) : (
@@ -140,51 +145,112 @@ const BookCopiesRow: React.FC<{ bookId: string; colSpan: number }> = ({ bookId, 
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Calling numbers ({copies.length})
+                  copy of books ({copies.length})
                 </p>
-                <span className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  Auto-generated unique calling numbers
-                </span>
               </div>
               <button
                 type="button"
-                onClick={() => addCopyMutation.mutate()}
+                onClick={() => { setNewSerial(''); setIsAddCopyOpen(true); }}
                 disabled={addCopyMutation.isPending}
                 className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-xs transition-colors"
-                title="Automatically adds another copy with the next calling number"
+                title="Manually add another copy with a unique serial number"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>{addCopyMutation.isPending ? 'Generating...' : '+ Add Copy'}</span>
+                <span>{addCopyMutation.isPending ? 'Adding...' : '+ Add Copy'}</span>
               </button>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {copies.map((c) => (
-                <span
-                  key={c.id}
-                  title={c.serial_number}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-bold border flex items-center gap-1.5 ${
-                    c.status === 'Unavailable'
-                      ? 'bg-rose-50 text-rose-700 border-rose-200'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  }`}
-                >
+               {copies.map((c) => (
+                 <button
+                   key={c.id}
+                   type="button"
+                   title={c.serial_number}
+                   disabled={c.status === 'Checkout' || statusMutation.isPending}
+                   onClick={() => {
+                     if (c.status === 'Checkout' || statusMutation.isPending) return;
+                     const next = c.status === 'Available' ? 'Unavailable' : c.status === 'Unavailable' ? 'On Hold' : 'Available';
+                     statusMutation.mutate({ copyId: c.id, status: next });
+                   }}
+                   className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-bold border flex items-center gap-1.5 ${
+                     c.status === 'Checkout'
+                       ? 'bg-amber-50 text-amber-700 border-amber-200 cursor-default'
+                       : c.status === 'Unavailable'
+                       ? 'bg-rose-50 text-rose-700 border-rose-200 cursor-pointer'
+                       : c.status === 'On Hold'
+                       ? 'bg-violet-50 text-violet-700 border-violet-200 cursor-pointer'
+                       : 'bg-emerald-50 text-emerald-700 border-emerald-200 cursor-pointer'
+                   }`}
+                 >
                   <span>{c.serial_number}</span>
                   <span
                     className={`text-[9px] px-1 py-0.2 rounded font-sans ${
-                      c.status === 'Unavailable'
+                      c.status === 'Checkout'
                         ? 'bg-rose-200/60 text-rose-800'
                         : 'bg-emerald-200/60 text-emerald-800'
                     }`}
                   >
                     {c.status}
-                  </span>
-                </span>
+                   </span>
+                 </button>
               ))}
             </div>
           </div>
         )}
       </td>
     </tr>
+    {isAddCopyOpen && (
+      <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 border border-slate-200 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+            <h3 className="text-base font-bold text-slate-900">Add Copy</h3>
+            <button type="button" onClick={() => setIsAddCopyOpen(false)} className="text-slate-400 hover:text-slate-700">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!newSerial.trim()) {
+                toast.error('Serial number is required.');
+                return;
+              }
+              addCopyMutation.mutate(newSerial.trim());
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700">Serial Number (Unique)</label>
+              <input
+                type="text"
+                required
+                autoFocus
+                value={newSerial}
+                onChange={(e) => setNewSerial(e.target.value)}
+                placeholder="e.g. TLB-BOOK-001"
+                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsAddCopyOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={addCopyMutation.isPending}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {addCopyMutation.isPending ? 'Adding...' : 'Add Copy'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
@@ -247,6 +313,8 @@ export const BooksPage: React.FC = () => {
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
   const [expandedBookId, setExpandedBookId] = useState<string | null>(null);
+  const [renamingCopyId, setRenamingCopyId] = useState<string | null>(null);
+  const [renameSerialValue, setRenameSerialValue] = useState('');
 
   // Form states
   const [title, setTitle] = useState('');
@@ -283,6 +351,12 @@ const { data: authors = [] } = useQuery({
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: () => dataService.getTags(),
+  });
+
+  const { data: editingCopies = [] } = useQuery({
+    queryKey: ['copies', editingBook?.id],
+    queryFn: () => dataService.getBookCopies(editingBook!.id),
+    enabled: Boolean(editingBook),
   });
 
   const toggleTag = (name: string) => {
@@ -346,6 +420,8 @@ const { data: authors = [] } = useQuery({
     setCoverFile(null);
     setCoverPreview(book.cover_url || '');
     setBorrowDays(book.borrow_duration_days ?? 7);
+    setRenamingCopyId(null);
+    setRenameSerialValue('');
   };
 
   const addMutation = useMutation({
@@ -394,6 +470,39 @@ const { data: authors = [] } = useQuery({
     onError: (err: any) => {
       toast.error(err.message || 'Failed to delete book.');
     },
+  });
+
+  const renameCopyMutation = useMutation({
+    mutationFn: ({ copyId, serial }: { copyId: string; serial: string }) => dataService.renameBookCopy(copyId, serial),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['copies', editingBook?.id] });
+      toast.success('Copy renamed.');
+      setRenamingCopyId(null);
+      setRenameSerialValue('');
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to rename copy.'),
+  });
+
+  const deleteCopyMutation = useMutation({
+    mutationFn: (copyId: string) => dataService.deleteBookCopy(copyId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['copies', editingBook?.id] });
+      queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      toast.success('Copy deleted.');
+      setTotalCopies((prev) => Math.max(0, prev - 1));
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to delete copy.'),
+  });
+
+  const editCopyStatusMutation = useMutation({
+    mutationFn: ({ copyId, status }: { copyId: string; status: BookCopyStatus }) => dataService.setCopyStatus(copyId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['copies', editingBook?.id] });
+      queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update copy status.'),
   });
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -489,7 +598,7 @@ const { data: authors = [] } = useQuery({
               <tr>
                 <th className="px-2 py-3 w-8"></th>
                 <th className="px-4 py-3">Cover</th>
-                <th className="px-4 py-3">Accession No.</th>
+                <th className="px-4 py-3">Call No.</th>
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Course</th>
                 <th className="px-4 py-3">Author</th>
@@ -521,7 +630,7 @@ const { data: authors = [] } = useQuery({
                       <button
                         onClick={() => setExpandedBookId((prev) => (prev === book.id ? null : book.id))}
                         className="p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                        title={expandedBookId === book.id ? 'Hide calling numbers' : 'Show calling numbers'}
+                        title={expandedBookId === book.id ? 'Hide copy of books' : 'Show copy of books'}
                       >
                         {expandedBookId === book.id ? (
                           <ChevronDown className="w-4 h-4" />
@@ -750,7 +859,7 @@ const { data: authors = [] } = useQuery({
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Accession Number</label>
+                <label className="text-xs font-semibold text-slate-700">Call Number</label>
                 <input
                   type="text"
                   placeholder="e.g. ACC-2024-001"
@@ -787,7 +896,7 @@ const { data: authors = [] } = useQuery({
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                 />
                 <p className="text-[11px] text-emerald-700 font-medium pt-0.5">
-                  �o" Unique calling numbers will be automatically generated for all {totalCopies || 1} {totalCopies === 1 ? 'copy' : 'copies'}. No manual entry required.
+                  �o" Unique copy of books will be automatically generated for all {totalCopies || 1} {totalCopies === 1 ? 'copy' : 'copies'}. No manual entry required.
                 </p>
               </div>
 
@@ -941,7 +1050,7 @@ const { data: authors = [] } = useQuery({
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Accession Number</label>
+                <label className="text-xs font-semibold text-slate-700">Call Number</label>
                 <input
                   type="text"
                   placeholder="e.g. ACC-2024-001"
@@ -989,14 +1098,100 @@ const { data: authors = [] } = useQuery({
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 shadow-xs"
                   />
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Available Copies</label>
-                  <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500 font-medium">
-                    Auto-managed from calling numbers — change Total Copies to add or remove copies.
-                  </div>
-                </div>
               </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Available Copies ({editingCopies.length})</label>
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {editingCopies.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 font-medium">No copies yet.</p>
+                    ) : (
+                      editingCopies.map((copy) => (
+                        <div key={copy.id} className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                          {renamingCopyId === copy.id ? (
+                            <>
+                              <input
+                                type="text"
+                                value={renameSerialValue}
+                                onChange={(e) => setRenameSerialValue(e.target.value)}
+                                className="flex-1 px-2 py-1 rounded-lg bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!renameSerialValue.trim()) {
+                                    toast.error('Serial number is required.');
+                                    return;
+                                  }
+                                  renameCopyMutation.mutate({ copyId: copy.id, serial: renameSerialValue.trim() });
+                                }}
+                                disabled={renameCopyMutation.isPending}
+                                className="px-2 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRenamingCopyId(null);
+                                  setRenameSerialValue('');
+                                }}
+                                className="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="flex-1 font-mono font-bold text-slate-800 truncate" title={copy.serial_number}>
+                                {copy.serial_number}
+                              </span>
+                              <span
+                                onClick={() => {
+                                  if (copy.status === 'Checkout' || editCopyStatusMutation.isPending) return;
+                                  const next: BookCopyStatus = copy.status === 'Available' ? 'Unavailable' : copy.status === 'Unavailable' ? 'On Hold' : 'Available';
+                                  editCopyStatusMutation.mutate({ copyId: copy.id, status: next });
+                                }}
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer ${
+                                  copy.status === 'Checkout'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : copy.status === 'Unavailable'
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : (copy.status === 'On Hold' || copy.status === 'onhold')
+                                    ? 'bg-violet-100 text-violet-700'
+                                    : 'bg-emerald-100 text-emerald-700'
+                                }`}
+                              >
+                                {copy.status}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRenamingCopyId(copy.id);
+                                  setRenameSerialValue(copy.serial_number);
+                                }}
+                                className="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+                              >
+                                Rename
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteCopyMutation.mutate(copy.id)}
+                                disabled={deleteCopyMutation.isPending}
+                                className="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-700"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium pt-0.5">
+                    all available copies that can be rename or delete
+                  </p>
+                </div>
 
               <div className="flex justify-end gap-3 pt-2">
                 <button

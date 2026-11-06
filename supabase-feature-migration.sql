@@ -5,12 +5,12 @@ BEGIN;
 
 -- Preserve the current meaning of borrowed copies after circulation is removed.
 ALTER TABLE public.book_copies DROP CONSTRAINT IF EXISTS book_copies_status_check;
-UPDATE public.book_copies SET status = 'Unavailable' WHERE status = 'Borrowed';
+UPDATE public.book_copies SET status = 'Checkout' WHERE status = 'Borrowed';
 ALTER TABLE public.book_copies
-  ADD CONSTRAINT book_copies_status_check CHECK (status IN ('Available', 'Unavailable'));
+  ADD CONSTRAINT book_copies_status_check CHECK (status IN ('Available', 'Unavailable', 'On Hold', 'onhold', 'Checkout'));
 
 ALTER TABLE public.books DROP CONSTRAINT IF EXISTS books_status_check;
-UPDATE public.books SET status = 'Unavailable' WHERE status = 'Borrowed';
+UPDATE public.books SET status = 'Checkout' WHERE status = 'Borrowed';
 ALTER TABLE public.books
   ADD CONSTRAINT books_status_check CHECK (status IN ('Available', 'Unavailable', 'Reserved', 'Lost', 'Damaged'));
 

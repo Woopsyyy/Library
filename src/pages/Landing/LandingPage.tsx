@@ -108,7 +108,7 @@ export const LandingPage: React.FC = () => {
             {/* Subtitle */}
             <p className="text-base sm:text-lg text-slate-600 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
               Your gateway to academic literature, technical references, and educational series.
-              Explore the collection, check calling number availability, and build your personal book lists.
+              Explore the collection, check copy of books availability, and build your personal book lists.
             </p>
 
             {/* Call-to-Action Buttons */}
@@ -201,7 +201,7 @@ export const LandingPage: React.FC = () => {
             </div>
             <h3 className="text-lg font-bold text-slate-900">Instant Online Catalog</h3>
             <p className="text-sm text-slate-600 leading-relaxed font-medium">
-              Search by title, course, author, or tag, then view full book details and calling numbers.
+              Search by title, course, author, or tag, then view full book details and copy of books.
             </p>
           </div>
 
@@ -247,7 +247,7 @@ export const LandingPage: React.FC = () => {
             </li>
             <li className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
               <strong className="block text-slate-900 font-bold">Availability:</strong>
-              Check the status of each calling number in book details.
+              Check the status of each copy of books in book details.
             </li>
           </ul>
         </div>

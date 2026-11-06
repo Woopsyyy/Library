@@ -43,17 +43,17 @@ CREATE TABLE IF NOT EXISTS public.book_copies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
     serial_number VARCHAR(100) NOT NULL UNIQUE,
-    status VARCHAR(50) NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Unavailable')),
+    status VARCHAR(50) NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Unavailable', 'On Hold', 'onhold', 'Checkout')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- Upgrade an existing schema to admin-managed availability statuses.
 ALTER TABLE public.book_copies DROP CONSTRAINT IF EXISTS book_copies_status_check;
-UPDATE public.book_copies SET status = 'Unavailable' WHERE status = 'Borrowed';
+UPDATE public.book_copies SET status = 'Checkout' WHERE status = 'Borrowed';
 ALTER TABLE public.book_copies
-    ADD CONSTRAINT book_copies_status_check CHECK (status IN ('Available', 'Unavailable'));
+    ADD CONSTRAINT book_copies_status_check CHECK (status IN ('Available', 'Unavailable', 'On Hold', 'onhold', 'Checkout'));
 ALTER TABLE public.books DROP CONSTRAINT IF EXISTS books_status_check;
-UPDATE public.books SET status = 'Unavailable' WHERE status = 'Borrowed';
+UPDATE public.books SET status = 'Checkout' WHERE status = 'Borrowed';
 ALTER TABLE public.books
     ADD CONSTRAINT books_status_check CHECK (status IN ('Available', 'Unavailable', 'Reserved', 'Lost', 'Damaged'));
 

@@ -42,7 +42,7 @@ export interface Tag {
   created_at?: string;
 }
 
-export type BookCopyStatus = 'Available' | 'Unavailable';
+export type BookCopyStatus = 'Available' | 'Unavailable' | 'On Hold' | 'onhold' | 'Checkout';
 
 export interface BookCopy {
   id: string;
@@ -99,4 +99,7 @@ export interface BorrowRecord {
   student_year_level?: string;
   student_section?: string;
   book_title?: string;
+  book_cover_url?: string;
+  book_author?: string;
+  book_type_name?: string;
 }

@@ -1,5 +1,6 @@
 import React, { useReducer } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Shield, GraduationCap, Library, LogOut, LayoutDashboard, BookMarked } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 
@@ -9,12 +10,21 @@ export const PublicLayout: React.FC = () => {
   const student = dataService.getCurrentStudent();
   const admin = dataService.getCurrentUser();
 
+  const { data: studentLoans = [] } = useQuery({
+    queryKey: ['studentBorrowRecords', student?.id, student?.school_id],
+    queryFn: () => dataService.getBorrowRecordsForStudent(student?.id, student?.school_id, student?.full_name),
+    enabled: Boolean(student),
+  });
+
+  const activeLoansCount = studentLoans.filter(r => r.status !== 'Returned').length;
+
   const handleSignOut = () => {
     dataService.logoutStudent();
     dataService.logoutAdmin();
     forceUpdate();
     navigate('/');
   };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-500 selection:text-white">
       {/* Header */}
@@ -31,12 +41,13 @@ export const PublicLayout: React.FC = () => {
                 Talisay City College Library
               </span>
               <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-500">
-                Online Library Catalog
+                Online Book Catalog
               </span>
             </div>
           </Link>
 
-          <nav className="flex items-center gap-4">
+          {/* Navigation Links */}
+          <nav className="flex items-center gap-3">
             <Link
               to="/"
               className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
@@ -57,6 +68,11 @@ export const PublicLayout: React.FC = () => {
                 >
                   <BookMarked className="w-4 h-4" />
                   <span className="hidden sm:inline">My Library</span>
+                  {activeLoansCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-white text-emerald-800 leading-none shadow-2xs">
+                      {activeLoansCount}
+                    </span>
+                  )}
                 </Link>
                 <button
                   onClick={handleSignOut}

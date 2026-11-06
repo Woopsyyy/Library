@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS public.book_copies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     book_id UUID NOT NULL REFERENCES public.books(id) ON DELETE CASCADE,
     serial_number VARCHAR(50) NOT NULL UNIQUE,
-    status VARCHAR(50) NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Unavailable')),
+    status VARCHAR(50) NOT NULL DEFAULT 'Available' CHECK (status IN ('Available', 'Unavailable', 'On Hold', 'onhold', 'Checkout')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -28,7 +28,7 @@ INSERT INTO public.book_copies (book_id, serial_number, status)
 SELECT
     b.id,
     'TLB-' || upper(substr(replace(b.id::text, '-', ''), 1, 8)) || '-' || lpad(gs.n::text, 3, '0'),
-    CASE WHEN gs.n <= GREATEST(b.total_copies - b.available_copies, 0) THEN 'Unavailable' ELSE 'Available' END
+    CASE WHEN gs.n <= GREATEST(b.total_copies - b.available_copies, 0) THEN 'Checkout' ELSE 'Available' END
 FROM public.books b
 CROSS JOIN LATERAL generate_series(1, GREATEST(b.total_copies, 0)) AS gs(n)
 WHERE NOT EXISTS (SELECT 1 FROM public.book_copies c WHERE c.book_id = b.id)

@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { dataService } from '../../services/dataService';
-import { Book } from '../../types';
+import { Book, User } from '../../types';
+import { getLoanRemainingInfo } from '../../lib/loanUtils';
 import { toast } from 'sonner';
 import { 
   Search, 
@@ -25,24 +26,29 @@ import {
 export const BorrowPage: React.FC = () => {
   const queryClient = useQueryClient();
 
-  // Manual borrower details (students cannot create accounts)
+  // Selected student user & details
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [userSearch, setUserSearch] = useState('');
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const userRef = useRef<HTMLDivElement>(null);
+
+  // Manual / auto-filled borrower details
   const [studentSchoolId, setStudentSchoolId] = useState('');
   const [studentFullName, setStudentFullName] = useState('');
   const [studentSection, setStudentSection] = useState('');
   const [studentYear, setStudentYear] = useState('');
   const [studentCourse, setStudentCourse] = useState('');
 
+  // Book selection state
   const [bookId, setBookId] = useState('');
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [bookSearch, setBookSearch] = useState('');
   const [isBookDropdownOpen, setIsBookDropdownOpen] = useState(false);
+  const bookRef = useRef<HTMLDivElement>(null);
 
   const [days, setDays] = useState<number>(3);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'overdue' | 'returned'>('all');
-
-  // Container refs for click-outside
-  const bookRef = useRef<HTMLDivElement>(null);
 
   // Queries
   const { data: books = [] } = useQuery({ 
@@ -50,21 +56,53 @@ export const BorrowPage: React.FC = () => {
     queryFn: () => dataService.getBooks() 
   });
 
+  const { data: users = [] } = useQuery({ 
+    queryKey: ['users'], 
+    queryFn: () => dataService.getUsers() 
+  });
+
   const { data: records = [], isLoading } = useQuery({ 
     queryKey: ['borrowRecords'], 
     queryFn: () => dataService.getBorrowRecords() 
   });
 
-  // Click outside listener for book dropdown
+  // Click outside listener for dropdowns
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (bookRef.current && !bookRef.current.contains(e.target as Node)) {
         setIsBookDropdownOpen(false);
       }
+      if (userRef.current && !userRef.current.contains(e.target as Node)) {
+        setIsUserDropdownOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Filter student/user suggestions
+  const suggestedUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    // Prioritize student accounts
+    const pool = [...users].sort((a, b) => {
+      const aIsStudent = a.account_type === 'student' || a.role === 'Student';
+      const bIsStudent = b.account_type === 'student' || b.role === 'Student';
+      if (aIsStudent && !bIsStudent) return -1;
+      if (!aIsStudent && bIsStudent) return 1;
+      return 0;
+    });
+
+    if (!q) return pool.slice(0, 8);
+
+    return pool.filter((u) => 
+      (u.full_name && u.full_name.toLowerCase().includes(q)) ||
+      (u.school_id && u.school_id.toLowerCase().includes(q)) ||
+      (u.username && u.username.toLowerCase().includes(q)) ||
+      (u.course && u.course.toLowerCase().includes(q)) ||
+      (u.section && u.section.toLowerCase().includes(q)) ||
+      (u.year_level && u.year_level.toLowerCase().includes(q))
+    ).slice(0, 10);
+  }, [users, userSearch]);
 
   // Filter book suggestions
   const suggestedBooks = useMemo(() => {
@@ -82,7 +120,21 @@ export const BorrowPage: React.FC = () => {
   // Synchronize max days when selected book changes
   const maxBorrowDays = selectedBook ? (selectedBook.borrow_duration_days ?? 7) : 3;
 
+  const handleSelectUser = (user: User) => {
+    setSelectedUser(user);
+    setStudentSchoolId(user.school_id || '');
+    setStudentFullName(user.full_name || '');
+    setStudentSection(user.section || '');
+    setStudentYear(user.year_level || '');
+    setStudentCourse(user.course || '');
+    setUserSearch('');
+    setIsUserDropdownOpen(false);
+    toast.success(`Selected ${user.full_name}. Student details auto-filled.`);
+  };
+
   const handleClearStudent = () => {
+    setSelectedUser(null);
+    setUserSearch('');
     setStudentSchoolId('');
     setStudentFullName('');
     setStudentSection('');
@@ -114,6 +166,7 @@ export const BorrowPage: React.FC = () => {
   // Borrow Mutation
   const borrowMutation = useMutation({
     mutationFn: () => dataService.borrowBook({
+      student_id: selectedUser?.id,
       school_id: studentSchoolId,
       full_name: studentFullName,
       section: studentSection,
@@ -124,6 +177,7 @@ export const BorrowPage: React.FC = () => {
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['borrowRecords'] });
+      queryClient.invalidateQueries({ queryKey: ['studentBorrowRecords'] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
       queryClient.invalidateQueries({ queryKey: ['copies'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
@@ -139,6 +193,7 @@ export const BorrowPage: React.FC = () => {
     mutationFn: (id: string) => dataService.returnBook(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['borrowRecords'] });
+      queryClient.invalidateQueries({ queryKey: ['studentBorrowRecords'] });
       queryClient.invalidateQueries({ queryKey: ['books'] });
       queryClient.invalidateQueries({ queryKey: ['copies'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
@@ -150,11 +205,11 @@ export const BorrowPage: React.FC = () => {
   const handleBorrow = (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentSchoolId.trim()) { 
-      toast.error('Please enter student ID.'); 
+      toast.error('Please enter or select a student ID.'); 
       return; 
     }
     if (!studentFullName.trim()) { 
-      toast.error('Please enter student full name.'); 
+      toast.error('Please enter or select student full name.'); 
       return; 
     }
     if (!bookId) { 
@@ -240,7 +295,7 @@ export const BorrowPage: React.FC = () => {
             <div>
               <h1 className="text-2xl font-black text-slate-900 tracking-tight">Borrow Books</h1>
               <p className="text-xs font-medium text-slate-500">
-                Record student loans, customize borrow duration with slider limits, and track due dates.
+                Record student loans, search registered users to auto-fill details, customize loan duration, and track due dates.
               </p>
             </div>
           </div>
@@ -278,56 +333,180 @@ export const BorrowPage: React.FC = () => {
         <form onSubmit={handleBorrow} className="p-6 space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
-            {/* 1. Student Borrower Details (manual entry) */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <UserIcon className="w-3.5 h-3.5 text-emerald-600" />
-                Student Borrower *
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input
-                  type="text"
-                  placeholder="Student ID (e.g. 1234-5678)"
-                  value={studentSchoolId}
-                  onChange={(e) => setStudentSchoolId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Full Name"
-                  value={studentFullName}
-                  onChange={(e) => setStudentFullName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Section"
-                  value={studentSection}
-                  onChange={(e) => setStudentSection(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Year"
-                  value={studentYear}
-                  onChange={(e) => setStudentYear(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Course"
-                  value={studentCourse}
-                  onChange={(e) => setStudentCourse(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs sm:col-span-2"
-                />
+            {/* 1. Student Borrower Search & Auto-Fill Details */}
+            <div className="space-y-3" ref={userRef}>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <UserIcon className="w-3.5 h-3.5 text-emerald-600" />
+                  Student Borrower *
+                </label>
+                {selectedUser && (
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    Student Linked
+                  </span>
+                )}
               </div>
-              <p className="text-[11px] text-slate-500 font-medium pt-1">
-                Enter student details manually. No student account required.
-              </p>
+
+              {/* Student Search Bar with Suggestions Dropdown */}
+              <div className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search registered student by name, student ID, course, section..."
+                    value={userSearch}
+                    onChange={(e) => {
+                      setUserSearch(e.target.value);
+                      setIsUserDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsUserDropdownOpen(true)}
+                    className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                  />
+                  {userSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setUserSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Student Suggestions Dropdown */}
+                {isUserDropdownOpen && (
+                  <div className="absolute z-30 left-0 right-0 mt-1.5 bg-white rounded-xl border border-slate-200 shadow-lg max-h-64 overflow-y-auto divide-y divide-slate-100">
+                    <div className="p-2 bg-slate-50 text-[11px] font-semibold text-slate-500 flex items-center justify-between">
+                      <span>Select Student ({suggestedUsers.length} found)</span>
+                      <span className="text-[10px] text-slate-400">Click to autofill</span>
+                    </div>
+                    {suggestedUsers.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-400">
+                        No students found matching "{userSearch}". You can still fill the fields manually below.
+                      </div>
+                    ) : (
+                      suggestedUsers.map((u) => (
+                        <div
+                          key={u.id}
+                          onClick={() => handleSelectUser(u)}
+                          className="p-2.5 flex items-center justify-between gap-3 hover:bg-emerald-50/70 cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center shrink-0">
+                              {(u.full_name || 'S').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-800 truncate">{u.full_name}</p>
+                              <div className="flex items-center gap-2 text-[11px] text-slate-500 truncate">
+                                {u.school_id && (
+                                  <span className="font-mono text-emerald-700 font-semibold">{u.school_id}</span>
+                                )}
+                                {(u.course || u.year_level || u.section) && (
+                                  <span>• {[u.course, u.year_level, u.section].filter(Boolean).join(' • ')}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md inline-block bg-slate-100 text-slate-600 border border-slate-200">
+                              {u.account_type === 'student' ? 'Student' : u.role || 'User'}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Auto-filled student inputs grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">Student ID *</label>
+                  <input
+                    type="text"
+                    placeholder="Student ID (e.g. 1234-5678)"
+                    value={studentSchoolId}
+                    onChange={(e) => {
+                      setStudentSchoolId(e.target.value);
+                      if (selectedUser && e.target.value !== selectedUser.school_id) setSelectedUser(null);
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">Full Name *</label>
+                  <input
+                    type="text"
+                    placeholder="Full Name"
+                    value={studentFullName}
+                    onChange={(e) => {
+                      setStudentFullName(e.target.value);
+                      if (selectedUser && e.target.value !== selectedUser.full_name) setSelectedUser(null);
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">Section</label>
+                  <input
+                    type="text"
+                    placeholder="Section (e.g. 1A)"
+                    value={studentSection}
+                    onChange={(e) => setStudentSection(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">Year</label>
+                  <input
+                    type="text"
+                    placeholder="Year (e.g. 1st Year)"
+                    value={studentYear}
+                    onChange={(e) => setStudentYear(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">Course</label>
+                  <input
+                    type="text"
+                    placeholder="Course (e.g. BS Information Technology)"
+                    value={studentCourse}
+                    onChange={(e) => setStudentCourse(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {selectedUser ? (
+                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+                  <div className="flex items-center gap-2 truncate">
+                    <GraduationCap className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="truncate">
+                      Autofilled from student account: <strong>{selectedUser.full_name}</strong> ({selectedUser.school_id})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearStudent}
+                    className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 shrink-0 ml-2"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Clear
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Search a registered student above to auto-fill details, or type them in manually.
+                </p>
+              )}
             </div>
 
             {/* 2. Book Selection with Search Bar & Suggestions */}
-            <div className="space-y-2" ref={bookRef}>
+            <div className="space-y-3" ref={bookRef}>
               <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
@@ -386,7 +565,7 @@ export const BorrowPage: React.FC = () => {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="Search by book title, author, course, or accession #..."
+                      placeholder="Search by book title, author, course, or call #..."
                       value={bookSearch}
                       onChange={(e) => {
                         setBookSearch(e.target.value);
@@ -673,7 +852,7 @@ export const BorrowPage: React.FC = () => {
                 <th className="px-4 py-3.5">Book Title</th>
                 <th className="px-4 py-3.5 text-center">Duration</th>
                 <th className="px-4 py-3.5">Borrowed On</th>
-                <th className="px-4 py-3.5">Due Date</th>
+                <th className="px-4 py-3.5">Due Date &amp; Remaining</th>
                 <th className="px-4 py-3.5 text-center">Status</th>
                 <th className="px-5 py-3.5 text-right">Action</th>
               </tr>
@@ -696,7 +875,8 @@ export const BorrowPage: React.FC = () => {
               ) : (
                 filteredRecords.map((r) => {
                   const isReturned = r.status === 'Returned';
-                  const isOverdue = !isReturned && new Date(r.due_date).getTime() < Date.now();
+                  const remaining = getLoanRemainingInfo(r.due_date, r.status);
+                  const isOverdue = remaining.isOverdue;
 
                   return (
                     <tr key={r.id} className="hover:bg-slate-50/70 transition-colors">
@@ -705,17 +885,17 @@ export const BorrowPage: React.FC = () => {
                           <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center shrink-0">
                             {(r.student_name || 'S').charAt(0).toUpperCase()}
                           </div>
-                           <div>
-                             <p className="font-bold text-slate-900">{r.student_name || 'Unknown Student'}</p>
-                             <p className="font-mono text-[11px] text-emerald-700 font-semibold">
-                               {r.student_school_id || r.student_id}
-                             </p>
-                             {(r.student_course || r.student_year_level || r.student_section) && (
-                               <p className="text-[10px] text-slate-500">
-                                 {[r.student_course, r.student_year_level, r.student_section].filter(Boolean).join(' • ')}
-                               </p>
-                             )}
-                           </div>
+                          <div>
+                            <p className="font-bold text-slate-900">{r.student_name || 'Unknown Student'}</p>
+                            <p className="font-mono text-[11px] text-emerald-700 font-semibold">
+                              {r.student_school_id || r.student_id}
+                            </p>
+                            {(r.student_course || r.student_year_level || r.student_section) && (
+                              <p className="text-[10px] text-slate-500">
+                                {[r.student_course, r.student_year_level, r.student_section].filter(Boolean).join(' • ')}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </td>
 
@@ -743,15 +923,23 @@ export const BorrowPage: React.FC = () => {
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <span className={`font-semibold ${
-                          isOverdue ? 'text-rose-600 font-bold' : 'text-slate-700'
-                        }`}>
-                          {new Date(r.due_date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </span>
+                        <div className="space-y-1">
+                          <span className={`font-semibold block ${
+                            isOverdue ? 'text-rose-600 font-bold' : 'text-slate-700'
+                          }`}>
+                            {new Date(r.due_date).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </span>
+                          {!isReturned && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${remaining.badgeBg} ${remaining.badgeText} ${remaining.badgeBorder}`}>
+                              <Clock className="w-3 h-3" />
+                              {remaining.label}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-4 py-3.5 text-center">
@@ -766,7 +954,7 @@ export const BorrowPage: React.FC = () => {
                             Overdue
                           </span>
                         ) : (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-1">
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
                             <Clock className="w-3 h-3" />
                             Active Loan
                           </span>

@@ -32,7 +32,7 @@ export const BookDetailsModal: React.FC<{ book: Book; onClose: () => void }> = (
               {book.published_date && <p><span className="font-bold text-slate-900">Published:</span> {book.published_date}</p>}
               {book.copyright_year && <p><span className="font-bold text-slate-900">Copyright:</span> {book.copyright_year}</p>}
               {book.location && <p><span className="font-bold text-slate-900">Location:</span> {book.location}</p>}
-              {book.accession_number && <p><span className="font-bold text-slate-900">Accession number:</span> {book.accession_number}</p>}
+              {book.accession_number && <p><span className="font-bold text-slate-900">Call Number:</span> {book.accession_number}</p>}
               <p><span className="font-bold text-slate-900">Borrow duration:</span> {(book.borrow_duration_days ?? 7)} day{(book.borrow_duration_days ?? 7) !== 1 ? 's' : ''}</p>
             </div>
             {book.tags && book.tags.length > 0 && <div className="flex flex-wrap items-center gap-2 pt-1"><span className="text-base font-bold text-slate-900">Tags:</span>{book.tags.map(tag => <span key={tag} className="px-3 py-1 rounded-full text-sm font-semibold bg-violet-50 text-violet-800 border border-violet-100">{tag}</span>)}</div>}
@@ -42,15 +42,14 @@ export const BookDetailsModal: React.FC<{ book: Book; onClose: () => void }> = (
 
         <section className="bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div><h4 className="text-lg font-black text-slate-900 flex items-center gap-2"><Hash className="w-5 h-5 text-emerald-700" />Calling Numbers</h4><p className="text-sm text-slate-600 mt-1">Green numbers are available; red numbers are unavailable.</p></div>
+            <div><h4 className="text-lg font-black text-slate-900 flex items-center gap-2"><Hash className="w-5 h-5 text-emerald-700" />copy of books</h4><p className="text-sm text-slate-600 mt-1">Green numbers are available; amber numbers are checked out.</p></div>
             <span className="text-sm font-bold text-emerald-800 bg-white px-3 py-2 rounded-xl border border-emerald-200">{availableCount} available</span>
           </div>
-          {isLoading ? <p className="text-base text-slate-500 py-5 text-center">Loading calling numbers...</p> : copies.length === 0 ? <p className="text-base text-slate-500 py-5 text-center">No calling numbers registered yet.</p> : (
+          {isLoading ? <p className="text-base text-slate-500 py-5 text-center">Loading copy of books...</p> : copies.length === 0 ? <p className="text-base text-slate-500 py-5 text-center">No copy of books registered yet.</p> : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
               {copies.map(copy => {
-                const available = copy.status === 'Available';
-                return <div key={copy.id} className={`px-4 py-3 rounded-xl border flex items-center justify-between gap-3 text-base ${available ? 'bg-white border-emerald-300 text-emerald-900' : 'bg-rose-50 border-rose-300 text-rose-800'}`}>
-                  <span className="font-mono font-bold">{copy.serial_number}</span><span className={`text-sm px-3 py-1 rounded-full font-bold ${available ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>{available ? 'Available' : 'Unavailable'}</span>
+                return <div key={copy.id} className={`px-4 py-3 rounded-xl border flex items-center justify-between gap-3 text-base ${copy.status === 'Available' ? 'bg-white border-emerald-300 text-emerald-900' : copy.status === 'Checkout' ? 'bg-amber-50 border-amber-300 text-amber-800' : (copy.status === 'On Hold' || copy.status === 'onhold') ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-rose-50 border-rose-300 text-rose-800'}`}>
+                  <span className="font-mono font-bold">{copy.serial_number}</span><span className={`text-sm px-3 py-1 rounded-full font-bold ${copy.status === 'Available' ? 'bg-emerald-100 text-emerald-800' : copy.status === 'Checkout' ? 'bg-amber-100 text-amber-800' : (copy.status === 'On Hold' || copy.status === 'onhold') ? 'bg-violet-100 text-violet-800' : 'bg-rose-100 text-rose-800'}`}>{copy.status}</span>
                 </div>;
               })}
             </div>
